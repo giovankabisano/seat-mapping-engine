@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { TentConfig, ExclusionZone, createDefaultTent } from '@/lib/types';
+import { TentConfig, ExclusionZone, AltarConfig, createDefaultTent } from '@/lib/types';
 import { calculateLayout } from '@/lib/seatCalculator';
 import ConfigPanel from '@/components/ConfigPanel';
 import LayoutCanvas from '@/components/LayoutCanvas';
@@ -67,6 +67,13 @@ export default function Home() {
         ...activeTent,
         exclusionZones: activeTent.exclusionZones.filter((z) => z.id !== id),
       });
+    },
+    [activeTent, updateTent]
+  );
+
+  const updateAltar = useCallback(
+    (altar: AltarConfig) => {
+      updateTent({ ...activeTent, altar });
     },
     [activeTent, updateTent]
   );
@@ -147,6 +154,7 @@ export default function Home() {
             onAddExclusionZone={addExclusionZone}
             onUpdateExclusionZone={updateExclusionZone}
             onRemoveExclusionZone={removeExclusionZone}
+            onUpdateAltar={updateAltar}
           />
           <Summary result={layout} tentName={activeTent.name} />
         </main>

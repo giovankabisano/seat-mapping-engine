@@ -1,15 +1,25 @@
 import { TentConfig, ChairPosition, LayoutResult, BlockInfo, ExclusionZone } from './types';
 
 /**
- * Checks if a chair at (cx, cy) with given dimensions overlaps any exclusion zone.
+ * Checks if a chair at (cx, cy) with given dimensions overlaps any exclusion zone
+ * OR the altar rectangle.
  */
 function isExcluded(
     cx: number,
     cy: number,
     chairW: number,
     chairH: number,
-    zones: ExclusionZone[]
+    zones: ExclusionZone[],
+    altar: { xCm: number; yCm: number; widthCm: number; heightCm: number }
 ): boolean {
+    // Check altar overlap
+    if (altar.widthCm > 0 && altar.heightCm > 0) {
+        const overlapX = cx < altar.xCm + altar.widthCm && cx + chairW > altar.xCm;
+        const overlapY = cy < altar.yCm + altar.heightCm && cy + chairH > altar.yCm;
+        if (overlapX && overlapY) return true;
+    }
+
+    // Check exclusion zones
     for (const z of zones) {
         const overlapX = cx < z.xCm + z.widthCm && cx + chairW > z.xCm;
         const overlapY = cy < z.yCm + z.heightCm && cy + chairH > z.yCm;
@@ -20,29 +30,17 @@ function isExcluded(
 
 /**
  * Calculate the full seat layout for a tent.
+ * Chairs fill the entire tent area; the altar acts as an exclusion object.
  */
 export function calculateLayout(tent: TentConfig): LayoutResult {
     const tentWidthCm = tent.widthM * 100;
     const tentLengthCm = tent.lengthM * 100;
-    const altarDepthCm = tent.altarDepthM * 100;
 
     const totalAreaM2 = tent.widthM * tent.lengthM;
 
-    // Seating area starts after the altar
-    const seatingStartY = altarDepthCm;
-    const seatingHeight = tentLengthCm - altarDepthCm;
-
-    if (seatingHeight <= 0) {
-        return {
-            chairs: [],
-            totalChairs: 0,
-            totalRows: 0,
-            blocksInfo: [],
-            usableAreaM2: 0,
-            totalAreaM2,
-            utilizationPercent: 0,
-        };
-    }
+    // Seating fills the full tent height
+    const seatingStartY = 0;
+    const seatingHeight = tentLengthCm;
 
     // Calculate rows
     const cellDepth = tent.chairDepthCm + tent.frontGapCm;
@@ -79,9 +77,7 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
     const chairs: ChairPosition[] = [];
 
     for (let b = 0; b < numBlocks; b++) {
-        // Block X start: offset by left side aisle + b * (blockWidth + aisleWidth)
         const xStart = seatingStartX + b * (blockWidth + tent.aisleWidthCm);
-        // Center chairs within block
         const usedWidth = colsPerBlock * cellWidth - tent.sideGapCm;
         const blockPadding = (blockWidth - usedWidth) / 2;
 
@@ -101,7 +97,8 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
                     cy,
                     tent.chairWidthCm,
                     tent.chairDepthCm,
-                    tent.exclusionZones
+                    tent.exclusionZones,
+                    tent.altar
                 );
 
                 chairs.push({

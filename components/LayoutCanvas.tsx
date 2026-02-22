@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { TentConfig, LayoutResult, ExclusionZone } from '@/lib/types';
+import { TentConfig, LayoutResult, ExclusionZone, AltarConfig } from '@/lib/types';
 
 interface LayoutCanvasProps {
     tent: TentConfig;
@@ -9,9 +9,18 @@ interface LayoutCanvasProps {
     onAddExclusionZone: (zone: ExclusionZone) => void;
     onUpdateExclusionZone: (zone: ExclusionZone) => void;
     onRemoveExclusionZone: (id: string) => void;
+    onUpdateAltar: (altar: AltarConfig) => void;
 }
 
-const PADDING = 40; // px padding around the tent drawing
+const RULER_SIZE = 30; // px width/height of ruler bars
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 5;
+
+type DragTarget =
+    | { type: 'altar' }
+    | { type: 'zone'; id: string }
+    | { type: 'pan' }
+    | null;
 
 export default function LayoutCanvas({
     tent,
@@ -19,6 +28,7 @@ export default function LayoutCanvas({
     onAddExclusionZone,
     onUpdateExclusionZone,
     onRemoveExclusionZone,
+    onUpdateAltar,
 }: LayoutCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -26,29 +36,48 @@ export default function LayoutCanvas({
     const [drawing, setDrawing] = useState(false);
     const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
     const [drawEnd, setDrawEnd] = useState({ x: 0, y: 0 });
-    const [dragging, setDragging] = useState<string | null>(null);
+    const [dragTarget, setDragTarget] = useState<DragTarget>(null);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [mode, setMode] = useState<'view' | 'draw'>('view');
-    const [hoveredZone, setHoveredZone] = useState<string | null>(null);
+    const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+
+    // Zoom & pan state
+    const [zoom, setZoom] = useState(1);
+    const [panX, setPanX] = useState(0);
+    const [panY, setPanY] = useState(0);
+    const [lastPanPos, setLastPanPos] = useState({ x: 0, y: 0 });
 
     const tentWidthCm = tent.widthM * 100;
     const tentLengthCm = tent.lengthM * 100;
 
-    // Scale factor: how many px per cm
-    const scaleX = (canvasSize.w - PADDING * 2) / tentWidthCm;
-    const scaleY = (canvasSize.h - PADDING * 2) / tentLengthCm;
-    const scale = Math.min(scaleX, scaleY);
+    // Available area for drawing (minus ruler)
+    const drawAreaW = canvasSize.w - RULER_SIZE;
+    const drawAreaH = canvasSize.h - RULER_SIZE;
 
-    const offsetX = (canvasSize.w - tentWidthCm * scale) / 2;
-    const offsetY = (canvasSize.h - tentLengthCm * scale) / 2;
+    // Base scale: fit tent into available area with some padding
+    const basePad = 30;
+    const baseScaleX = (drawAreaW - basePad * 2) / tentWidthCm;
+    const baseScaleY = (drawAreaH - basePad * 2) / tentLengthCm;
+    const baseScale = Math.min(baseScaleX, baseScaleY);
+
+    // Final scale with zoom
+    const scale = baseScale * zoom;
+
+    // Center of the drawing area
+    const centerX = RULER_SIZE + drawAreaW / 2;
+    const centerY = RULER_SIZE + drawAreaH / 2;
+
+    // Tent top-left position (in canvas px) with pan
+    const tentOriginX = centerX - (tentWidthCm * scale) / 2 + panX;
+    const tentOriginY = centerY - (tentLengthCm * scale) / 2 + panY;
 
     // Convert canvas pixel to tent cm
     const pxToCm = useCallback(
         (px: number, py: number) => ({
-            xCm: (px - offsetX) / scale,
-            yCm: (py - offsetY) / scale,
+            xCm: (px - tentOriginX) / scale,
+            yCm: (py - tentOriginY) / scale,
         }),
-        [offsetX, offsetY, scale]
+        [tentOriginX, tentOriginY, scale]
     );
 
     // Resize observer
@@ -65,7 +94,19 @@ export default function LayoutCanvas({
         return () => ro.disconnect();
     }, []);
 
-    // Draw the canvas
+    // Reset zoom when tent changes
+    const resetZoom = useCallback(() => {
+        setZoom(1);
+        setPanX(0);
+        setPanY(0);
+    }, []);
+
+    // Hit test
+    function hitTest(xCm: number, yCm: number, rect: { xCm: number; yCm: number; widthCm: number; heightCm: number }) {
+        return xCm >= rect.xCm && xCm <= rect.xCm + rect.widthCm && yCm >= rect.yCm && yCm <= rect.yCm + rect.heightCm;
+    }
+
+    // ===== DRAW =====
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -81,89 +122,68 @@ export default function LayoutCanvas({
         ctx.fillStyle = '#0f0f1a';
         ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
 
-        // Draw tent boundary
+        // === Draw main content area (clipped to exclude ruler area) ===
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(RULER_SIZE, RULER_SIZE, drawAreaW, drawAreaH);
+        ctx.clip();
+
+        // Tent boundary
         ctx.strokeStyle = '#3b3b5c';
         ctx.lineWidth = 2;
-        ctx.strokeRect(offsetX, offsetY, tentWidthCm * scale, tentLengthCm * scale);
+        ctx.strokeRect(tentOriginX, tentOriginY, tentWidthCm * scale, tentLengthCm * scale);
 
-        // Grid lines (subtle)
+        // Grid
         ctx.strokeStyle = '#1a1a2e';
         ctx.lineWidth = 0.5;
-        const gridStepCm = 100; // 1m grid
+        const gridStepCm = 100;
         for (let x = gridStepCm; x < tentWidthCm; x += gridStepCm) {
             ctx.beginPath();
-            ctx.moveTo(offsetX + x * scale, offsetY);
-            ctx.lineTo(offsetX + x * scale, offsetY + tentLengthCm * scale);
+            ctx.moveTo(tentOriginX + x * scale, tentOriginY);
+            ctx.lineTo(tentOriginX + x * scale, tentOriginY + tentLengthCm * scale);
             ctx.stroke();
         }
         for (let y = gridStepCm; y < tentLengthCm; y += gridStepCm) {
             ctx.beginPath();
-            ctx.moveTo(offsetX, offsetY + y * scale);
-            ctx.lineTo(offsetX + tentWidthCm * scale, offsetY + y * scale);
+            ctx.moveTo(tentOriginX, tentOriginY + y * scale);
+            ctx.lineTo(tentOriginX + tentWidthCm * scale, tentOriginY + y * scale);
             ctx.stroke();
         }
 
-        // Draw altar area
-        const altarH = tent.altarDepthM * 100 * scale;
-        if (altarH > 0) {
-            const altarGrad = ctx.createLinearGradient(
-                offsetX,
-                offsetY,
-                offsetX,
-                offsetY + altarH
-            );
-            altarGrad.addColorStop(0, 'rgba(212, 175, 55, 0.35)');
-            altarGrad.addColorStop(1, 'rgba(212, 175, 55, 0.08)');
-            ctx.fillStyle = altarGrad;
-            ctx.fillRect(offsetX, offsetY, tentWidthCm * scale, altarH);
-
-            // Altar label
-            ctx.fillStyle = '#d4af37';
-            ctx.font = `bold ${Math.max(11, 14 * scale)}px system-ui, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.fillText(
-                '✝ ALTAR',
-                offsetX + (tentWidthCm * scale) / 2,
-                offsetY + altarH / 2 + 5
-            );
-        }
-
-        // Draw side aisles
+        // Side aisles
         const leftAisleCm = tent.leftAisleCm || 0;
         const rightAisleCm = tent.rightAisleCm || 0;
-        const seatingYStart = offsetY + altarH;
-        const seatingH = (tentLengthCm - tent.altarDepthM * 100) * scale;
 
         if (leftAisleCm > 0) {
             const lw = leftAisleCm * scale;
             ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
-            ctx.fillRect(offsetX, seatingYStart, lw, seatingH);
+            ctx.fillRect(tentOriginX, tentOriginY, lw, tentLengthCm * scale);
             ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
-            ctx.moveTo(offsetX + lw, seatingYStart);
-            ctx.lineTo(offsetX + lw, offsetY + tentLengthCm * scale);
+            ctx.moveTo(tentOriginX + lw, tentOriginY);
+            ctx.lineTo(tentOriginX + lw, tentOriginY + tentLengthCm * scale);
             ctx.stroke();
             ctx.setLineDash([]);
         }
 
         if (rightAisleCm > 0) {
             const rw = rightAisleCm * scale;
-            const rx = offsetX + tentWidthCm * scale - rw;
+            const rx = tentOriginX + tentWidthCm * scale - rw;
             ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
-            ctx.fillRect(rx, seatingYStart, rw, seatingH);
+            ctx.fillRect(rx, tentOriginY, rw, tentLengthCm * scale);
             ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
-            ctx.moveTo(rx, seatingYStart);
-            ctx.lineTo(rx, offsetY + tentLengthCm * scale);
+            ctx.moveTo(rx, tentOriginY);
+            ctx.lineTo(rx, tentOriginY + tentLengthCm * scale);
             ctx.stroke();
             ctx.setLineDash([]);
         }
 
-        // Draw center aisles
+        // Center aisles
         if (tent.aisleCount > 0) {
             const numBlocks = tent.aisleCount + 1;
             const sideAisleWidth = leftAisleCm + rightAisleCm;
@@ -172,81 +192,112 @@ export default function LayoutCanvas({
             const blockWidth = availableWidth / numBlocks;
 
             for (let i = 1; i <= tent.aisleCount; i++) {
-                const aisleX = offsetX + (leftAisleCm + blockWidth * i + tent.aisleWidthCm * (i - 1)) * scale;
+                const aisleX = tentOriginX + (leftAisleCm + blockWidth * i + tent.aisleWidthCm * (i - 1)) * scale;
                 const aisleW = tent.aisleWidthCm * scale;
                 ctx.fillStyle = 'rgba(100, 120, 200, 0.08)';
-                ctx.fillRect(aisleX, seatingYStart, aisleW, seatingH);
+                ctx.fillRect(aisleX, tentOriginY, aisleW, tentLengthCm * scale);
 
-                // Dashed lines for aisle
                 ctx.strokeStyle = 'rgba(100, 120, 200, 0.3)';
                 ctx.lineWidth = 1;
                 ctx.setLineDash([4, 4]);
                 ctx.beginPath();
-                ctx.moveTo(aisleX, seatingYStart);
-                ctx.lineTo(aisleX, offsetY + tentLengthCm * scale);
-                ctx.moveTo(aisleX + aisleW, seatingYStart);
-                ctx.lineTo(aisleX + aisleW, offsetY + tentLengthCm * scale);
+                ctx.moveTo(aisleX, tentOriginY);
+                ctx.lineTo(aisleX, tentOriginY + tentLengthCm * scale);
+                ctx.moveTo(aisleX + aisleW, tentOriginY);
+                ctx.lineTo(aisleX + aisleW, tentOriginY + tentLengthCm * scale);
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
         }
 
-        // Draw chairs
+        // Chairs
         for (const chair of layout.chairs) {
-            const cx = offsetX + chair.xCm * scale;
-            const cy = offsetY + chair.yCm * scale;
+            if (chair.excluded) continue;
+
+            const cx = tentOriginX + chair.xCm * scale;
+            const cy = tentOriginY + chair.yCm * scale;
             const cw = tent.chairWidthCm * scale;
             const ch = tent.chairDepthCm * scale;
 
-            if (chair.excluded) {
-                // Show faded placeholder for excluded chairs
-                ctx.fillStyle = 'rgba(255, 60, 60, 0.12)';
-                ctx.fillRect(cx, cy, cw, ch);
-            } else {
-                // Chair gradient
-                const chairGrad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
-                chairGrad.addColorStop(0, '#6c5ce7');
-                chairGrad.addColorStop(1, '#4834d4');
-                ctx.fillStyle = chairGrad;
-                ctx.beginPath();
-                ctx.roundRect(cx, cy, cw, ch, 2 * scale);
-                ctx.fill();
+            const chairGrad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+            chairGrad.addColorStop(0, '#6c5ce7');
+            chairGrad.addColorStop(1, '#4834d4');
+            ctx.fillStyle = chairGrad;
+            ctx.beginPath();
+            ctx.roundRect(cx, cy, cw, ch, Math.max(1, 2 * scale));
+            ctx.fill();
 
-                // Chair border
-                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-                ctx.lineWidth = 0.5;
-                ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        }
+
+        // Altar
+        const altar = tent.altar;
+        if (altar.widthCm > 0 && altar.heightCm > 0) {
+            const ax = tentOriginX + altar.xCm * scale;
+            const ay = tentOriginY + altar.yCm * scale;
+            const aw = altar.widthCm * scale;
+            const ah = altar.heightCm * scale;
+
+            const isHov = hoveredItem === 'altar';
+
+            const altarGrad = ctx.createLinearGradient(ax, ay, ax, ay + ah);
+            altarGrad.addColorStop(0, isHov ? 'rgba(212, 175, 55, 0.45)' : 'rgba(212, 175, 55, 0.35)');
+            altarGrad.addColorStop(1, isHov ? 'rgba(212, 175, 55, 0.2)' : 'rgba(212, 175, 55, 0.1)');
+            ctx.fillStyle = altarGrad;
+            ctx.beginPath();
+            ctx.roundRect(ax, ay, aw, ah, Math.max(1, 4 * scale));
+            ctx.fill();
+
+            ctx.strokeStyle = isHov ? '#f0d668' : '#d4af37';
+            ctx.lineWidth = isHov ? 2 : 1.5;
+            ctx.beginPath();
+            ctx.roundRect(ax, ay, aw, ah, Math.max(1, 4 * scale));
+            ctx.stroke();
+
+            ctx.fillStyle = '#d4af37';
+            ctx.font = `bold ${Math.max(10, 14 * scale)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('✝ ALTAR', ax + aw / 2, ay + ah / 2);
+            ctx.textBaseline = 'alphabetic';
+
+            if (isHov) {
+                ctx.fillStyle = 'rgba(240, 214, 104, 0.7)';
+                ctx.font = `${Math.max(8, 10 * scale)}px system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('drag untuk pindah', ax + aw / 2, ay + ah / 2 + Math.max(12, 18 * scale));
+                ctx.textBaseline = 'alphabetic';
             }
         }
 
-        // Draw exclusion zones
+        // Exclusion zones
         for (const zone of tent.exclusionZones) {
-            const zx = offsetX + zone.xCm * scale;
-            const zy = offsetY + zone.yCm * scale;
+            const zx = tentOriginX + zone.xCm * scale;
+            const zy = tentOriginY + zone.yCm * scale;
             const zw = zone.widthCm * scale;
             const zh = zone.heightCm * scale;
 
-            const isHovered = hoveredZone === zone.id;
+            const isHov = hoveredItem === zone.id;
 
-            ctx.fillStyle = isHovered
-                ? 'rgba(255, 100, 100, 0.25)'
-                : 'rgba(255, 70, 70, 0.15)';
+            ctx.fillStyle = isHov ? 'rgba(255, 100, 100, 0.25)' : 'rgba(255, 70, 70, 0.15)';
             ctx.fillRect(zx, zy, zw, zh);
 
-            ctx.strokeStyle = isHovered ? '#ff6b6b' : 'rgba(255, 100, 100, 0.5)';
-            ctx.lineWidth = isHovered ? 2 : 1;
+            ctx.strokeStyle = isHov ? '#ff6b6b' : 'rgba(255, 100, 100, 0.5)';
+            ctx.lineWidth = isHov ? 2 : 1;
             ctx.setLineDash([6, 3]);
             ctx.strokeRect(zx, zy, zw, zh);
             ctx.setLineDash([]);
 
-            // Label
             ctx.fillStyle = '#ff6b6b';
             ctx.font = `${Math.max(9, 11 * scale)}px system-ui, sans-serif`;
             ctx.textAlign = 'center';
             ctx.fillText(zone.label || 'Zona', zx + zw / 2, zy + zh / 2 + 4);
         }
 
-        // Draw current drawing rect
+        // Drawing rect
         if (drawing) {
             const dx = Math.min(drawStart.x, drawEnd.x);
             const dy = Math.min(drawStart.y, drawEnd.y);
@@ -262,42 +313,159 @@ export default function LayoutCanvas({
             ctx.setLineDash([]);
         }
 
-        // Scale labels
-        ctx.fillStyle = '#555';
-        ctx.font = '11px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-            `${tent.widthM} m`,
-            offsetX + (tentWidthCm * scale) / 2,
-            offsetY + tentLengthCm * scale + 18
-        );
-        ctx.save();
-        ctx.translate(offsetX - 18, offsetY + (tentLengthCm * scale) / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText(`${tent.lengthM} m`, 0, 0);
-        ctx.restore();
-    }, [canvasSize, tent, layout, drawing, drawStart, drawEnd, hoveredZone, offsetX, offsetY, scale, tentWidthCm, tentLengthCm]);
+        ctx.restore(); // end clip
 
-    // Mouse handlers for drawing/dragging exclusion zones
+        // ===== RULERS =====
+        // Top ruler background
+        ctx.fillStyle = '#141422';
+        ctx.fillRect(RULER_SIZE, 0, drawAreaW, RULER_SIZE);
+        // Left ruler background
+        ctx.fillRect(0, RULER_SIZE, RULER_SIZE, drawAreaH);
+        // Corner square
+        ctx.fillStyle = '#181830';
+        ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE);
+
+        // Subtle border
+        ctx.strokeStyle = '#2a2a45';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(RULER_SIZE, 0);
+        ctx.lineTo(RULER_SIZE, canvasSize.h);
+        ctx.moveTo(0, RULER_SIZE);
+        ctx.lineTo(canvasSize.w, RULER_SIZE);
+        ctx.stroke();
+
+        // Ruler tick configuration — choose step based on zoom
+        const pixelsPerMeter = 100 * scale;
+        let rulerStepCm: number;
+        if (pixelsPerMeter > 200) rulerStepCm = 25; // every 25cm
+        else if (pixelsPerMeter > 100) rulerStepCm = 50; // every 50cm
+        else if (pixelsPerMeter > 40) rulerStepCm = 100; // every 1m
+        else rulerStepCm = 200; // every 2m
+
+        ctx.fillStyle = '#888';
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        ctx.font = '9px system-ui, sans-serif';
+
+        // Top ruler (X axis — width)
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        for (let cm = 0; cm <= tentWidthCm; cm += rulerStepCm) {
+            const px = tentOriginX + cm * scale;
+            if (px < RULER_SIZE - 5 || px > canvasSize.w + 5) continue;
+
+            const isMajor = cm % 100 === 0;
+            const tickH = isMajor ? 10 : 5;
+
+            ctx.beginPath();
+            ctx.moveTo(px, RULER_SIZE);
+            ctx.lineTo(px, RULER_SIZE - tickH);
+            ctx.stroke();
+
+            if (isMajor) {
+                const label = (cm / 100).toString();
+                ctx.fillText(label, px, RULER_SIZE - tickH - 2);
+            }
+        }
+
+        // Left ruler (Y axis — length)
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        for (let cm = 0; cm <= tentLengthCm; cm += rulerStepCm) {
+            const py = tentOriginY + cm * scale;
+            if (py < RULER_SIZE - 5 || py > canvasSize.h + 5) continue;
+
+            const isMajor = cm % 100 === 0;
+            const tickW = isMajor ? 10 : 5;
+
+            ctx.beginPath();
+            ctx.moveTo(RULER_SIZE, py);
+            ctx.lineTo(RULER_SIZE - tickW, py);
+            ctx.stroke();
+
+            if (isMajor) {
+                const label = (cm / 100).toString();
+                ctx.fillText(label, RULER_SIZE - tickW - 3, py);
+            }
+        }
+
+        // Ruler unit labels in corner
+        ctx.fillStyle = '#555';
+        ctx.font = 'bold 8px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('m', RULER_SIZE / 2, RULER_SIZE / 2);
+
+    }, [canvasSize, tent, layout, drawing, drawStart, drawEnd, hoveredItem, zoom, panX, panY, tentOriginX, tentOriginY, scale, drawAreaW, drawAreaH, tentWidthCm, tentLengthCm]);
+
+    // ===== WHEEL ZOOM =====
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Zoom factor
+            const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * zoomDelta));
+
+            // Zoom toward cursor position
+            const zoomRatio = newZoom / zoom;
+            const newPanX = mouseX - (mouseX - panX - centerX + (tentWidthCm * baseScale * zoom) / 2) * zoomRatio - centerX + (tentWidthCm * baseScale * newZoom) / 2;
+            const newPanY = mouseY - (mouseY - panY - centerY + (tentLengthCm * baseScale * zoom) / 2) * zoomRatio - centerY + (tentLengthCm * baseScale * newZoom) / 2;
+
+            setZoom(newZoom);
+            setPanX(newPanX);
+            setPanY(newPanY);
+        };
+
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        return () => canvas.removeEventListener('wheel', handleWheel);
+    }, [zoom, panX, panY, centerX, centerY, tentWidthCm, tentLengthCm, baseScale]);
+
+    // ===== MOUSE HANDLERS =====
     const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
         const rect = canvasRef.current!.getBoundingClientRect();
         const px = e.clientX - rect.left;
         const py = e.clientY - rect.top;
         const { xCm, yCm } = pxToCm(px, py);
 
-        // Check if clicking on an existing zone (for drag)
+        // Middle-click or right-click = pan
+        if (e.button === 1 || e.button === 2) {
+            e.preventDefault();
+            setDragTarget({ type: 'pan' });
+            setLastPanPos({ x: px, y: py });
+            return;
+        }
+
         if (mode === 'view') {
+            // Check altar
+            if (hitTest(xCm, yCm, tent.altar)) {
+                setDragTarget({ type: 'altar' });
+                setDragOffset({ x: xCm - tent.altar.xCm, y: yCm - tent.altar.yCm });
+                return;
+            }
+
+            // Check exclusion zones
             for (const zone of tent.exclusionZones) {
-                if (
-                    xCm >= zone.xCm &&
-                    xCm <= zone.xCm + zone.widthCm &&
-                    yCm >= zone.yCm &&
-                    yCm <= zone.yCm + zone.heightCm
-                ) {
-                    setDragging(zone.id);
+                if (hitTest(xCm, yCm, zone)) {
+                    setDragTarget({ type: 'zone', id: zone.id });
                     setDragOffset({ x: xCm - zone.xCm, y: yCm - zone.yCm });
                     return;
                 }
+            }
+
+            // Left-click on empty = pan
+            if (!hitTest(xCm, yCm, tent.altar) && !tent.exclusionZones.some(z => hitTest(xCm, yCm, z))) {
+                setDragTarget({ type: 'pan' });
+                setLastPanPos({ x: px, y: py });
+                return;
             }
         }
 
@@ -314,16 +482,33 @@ export default function LayoutCanvas({
         const py = e.clientY - rect.top;
         const { xCm, yCm } = pxToCm(px, py);
 
-        if (dragging) {
-            const zone = tent.exclusionZones.find((z) => z.id === dragging);
-            if (zone) {
-                onUpdateExclusionZone({
-                    ...zone,
-                    xCm: Math.max(0, Math.min(tentWidthCm - zone.widthCm, xCm - dragOffset.x)),
-                    yCm: Math.max(0, Math.min(tentLengthCm - zone.heightCm, yCm - dragOffset.y)),
-                });
+        if (dragTarget) {
+            if (dragTarget.type === 'pan') {
+                setPanX((prev) => prev + (px - lastPanPos.x));
+                setPanY((prev) => prev + (py - lastPanPos.y));
+                setLastPanPos({ x: px, y: py });
+                return;
             }
-            return;
+            if (dragTarget.type === 'altar') {
+                const alt = tent.altar;
+                onUpdateAltar({
+                    ...alt,
+                    xCm: Math.max(0, Math.min(tentWidthCm - alt.widthCm, xCm - dragOffset.x)),
+                    yCm: Math.max(0, Math.min(tentLengthCm - alt.heightCm, yCm - dragOffset.y)),
+                });
+                return;
+            }
+            if (dragTarget.type === 'zone') {
+                const zone = tent.exclusionZones.find((z) => z.id === dragTarget.id);
+                if (zone) {
+                    onUpdateExclusionZone({
+                        ...zone,
+                        xCm: Math.max(0, Math.min(tentWidthCm - zone.widthCm, xCm - dragOffset.x)),
+                        yCm: Math.max(0, Math.min(tentLengthCm - zone.heightCm, yCm - dragOffset.y)),
+                    });
+                }
+                return;
+            }
         }
 
         if (drawing) {
@@ -332,24 +517,23 @@ export default function LayoutCanvas({
         }
 
         // Hover check
-        let foundHover: string | null = null;
-        for (const zone of tent.exclusionZones) {
-            if (
-                xCm >= zone.xCm &&
-                xCm <= zone.xCm + zone.widthCm &&
-                yCm >= zone.yCm &&
-                yCm <= zone.yCm + zone.heightCm
-            ) {
-                foundHover = zone.id;
-                break;
+        let found: string | null = null;
+        if (hitTest(xCm, yCm, tent.altar)) {
+            found = 'altar';
+        } else {
+            for (const zone of tent.exclusionZones) {
+                if (hitTest(xCm, yCm, zone)) {
+                    found = zone.id;
+                    break;
+                }
             }
         }
-        setHoveredZone(foundHover);
+        setHoveredItem(found);
     };
 
     const handleMouseUp = () => {
-        if (dragging) {
-            setDragging(null);
+        if (dragTarget) {
+            setDragTarget(null);
             return;
         }
 
@@ -376,6 +560,16 @@ export default function LayoutCanvas({
             setMode('view');
         }
     };
+
+    const cursorClass = mode === 'draw'
+        ? 'canvas-draw-mode'
+        : dragTarget?.type === 'pan'
+            ? 'canvas-panning'
+            : hoveredItem
+                ? 'canvas-grab-mode'
+                : '';
+
+    const zoomPercent = Math.round(zoom * 100);
 
     return (
         <div className="canvas-container">
@@ -411,18 +605,45 @@ export default function LayoutCanvas({
                 {mode === 'draw' && (
                     <span className="toolbar-hint">🖱 Klik & drag di canvas untuk membuat zona…</span>
                 )}
+
+                {/* Zoom controls */}
+                <div className="zoom-controls">
+                    <button
+                        className="zoom-btn"
+                        onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))}
+                        title="Zoom Out"
+                    >
+                        −
+                    </button>
+                    <span className="zoom-label">{zoomPercent}%</span>
+                    <button
+                        className="zoom-btn"
+                        onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))}
+                        title="Zoom In"
+                    >
+                        +
+                    </button>
+                    <button
+                        className="zoom-btn zoom-btn-reset"
+                        onClick={resetZoom}
+                        title="Reset View"
+                    >
+                        ⟲
+                    </button>
+                </div>
             </div>
             <div ref={containerRef} className="canvas-wrapper">
                 <canvas
                     ref={canvasRef}
                     style={{ width: canvasSize.w, height: canvasSize.h }}
-                    className={`layout-canvas ${mode === 'draw' ? 'canvas-draw-mode' : ''}`}
+                    className={`layout-canvas ${cursorClass}`}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
+                    onContextMenu={(e) => e.preventDefault()}
                     onMouseLeave={() => {
                         setDrawing(false);
-                        setDragging(null);
+                        setDragTarget(null);
                     }}
                 />
             </div>
@@ -432,6 +653,7 @@ export default function LayoutCanvas({
                 <span className="legend-item"><span className="legend-swatch legend-aisle"></span> Lorong Tengah</span>
                 <span className="legend-item"><span className="legend-swatch legend-side-aisle"></span> Lorong Samping</span>
                 <span className="legend-item"><span className="legend-swatch legend-zone"></span> Zona Exclusion</span>
+                <span className="legend-item legend-hint">Scroll = Zoom · Drag = Pan</span>
             </div>
         </div>
     );

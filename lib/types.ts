@@ -1,3 +1,14 @@
+export interface AltarConfig {
+  /** X position in cm from left edge */
+  xCm: number;
+  /** Y position in cm from top (front) edge */
+  yCm: number;
+  /** Width in cm */
+  widthCm: number;
+  /** Height/depth in cm */
+  heightCm: number;
+}
+
 export interface TentConfig {
   id: string;
   name: string;
@@ -17,8 +28,8 @@ export interface TentConfig {
   aisleCount: number;
   /** Aisle width in cm */
   aisleWidthCm: number;
-  /** Altar depth from front of tent in meters */
-  altarDepthM: number;
+  /** Altar — draggable rectangle on the canvas */
+  altar: AltarConfig;
   /** Left side aisle width in cm */
   leftAisleCm: number;
   /** Right side aisle width in cm */
@@ -78,7 +89,12 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     frontGapCm: 10,
     aisleCount: 1,
     aisleWidthCm: 100,
-    altarDepthM: 1.5,
+    altar: {
+      xCm: 250,
+      yCm: 0,
+      widthCm: 500,
+      heightCm: 150,
+    },
     leftAisleCm: 0,
     rightAisleCm: 0,
     exclusionZones: [],
