@@ -1,8 +1,13 @@
-import { TentConfig, ChairPosition, LayoutResult, BlockInfo, ExclusionZone } from './types';
+import { TentConfig, ChairPosition, LayoutResult, BlockInfo, ExclusionZone, FurnitureItem } from './types';
+
+type Rect = { xCm: number; yCm: number; widthCm: number; heightCm: number };
+
+function rectsOverlap(cx: number, cy: number, cw: number, ch: number, r: Rect): boolean {
+    return cx < r.xCm + r.widthCm && cx + cw > r.xCm && cy < r.yCm + r.heightCm && cy + ch > r.yCm;
+}
 
 /**
- * Checks if a chair at (cx, cy) with given dimensions overlaps any exclusion zone
- * OR the altar rectangle.
+ * Checks if a chair overlaps the altar, any exclusion zone, or any furniture item.
  */
 function isExcluded(
     cx: number,
@@ -10,20 +15,15 @@ function isExcluded(
     chairW: number,
     chairH: number,
     zones: ExclusionZone[],
-    altar: { xCm: number; yCm: number; widthCm: number; heightCm: number }
+    altar: Rect,
+    furniture: FurnitureItem[]
 ): boolean {
-    // Check altar overlap
-    if (altar.widthCm > 0 && altar.heightCm > 0) {
-        const overlapX = cx < altar.xCm + altar.widthCm && cx + chairW > altar.xCm;
-        const overlapY = cy < altar.yCm + altar.heightCm && cy + chairH > altar.yCm;
-        if (overlapX && overlapY) return true;
-    }
-
-    // Check exclusion zones
+    if (altar.widthCm > 0 && altar.heightCm > 0 && rectsOverlap(cx, cy, chairW, chairH, altar)) return true;
     for (const z of zones) {
-        const overlapX = cx < z.xCm + z.widthCm && cx + chairW > z.xCm;
-        const overlapY = cy < z.yCm + z.heightCm && cy + chairH > z.yCm;
-        if (overlapX && overlapY) return true;
+        if (rectsOverlap(cx, cy, chairW, chairH, z)) return true;
+    }
+    for (const f of furniture) {
+        if (rectsOverlap(cx, cy, chairW, chairH, f)) return true;
     }
     return false;
 }
@@ -98,7 +98,8 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
                     tent.chairWidthCm,
                     tent.chairDepthCm,
                     tent.exclusionZones,
-                    tent.altar
+                    tent.altar,
+                    tent.furniture
                 );
 
                 chairs.push({

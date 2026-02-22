@@ -1,17 +1,46 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
-import { TentConfig, ExclusionZone, AltarConfig, createDefaultTent } from '@/lib/types';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { TentConfig, ExclusionZone, AltarConfig, FurnitureItem, createDefaultTent } from '@/lib/types';
 import { calculateLayout } from '@/lib/seatCalculator';
 import ConfigPanel from '@/components/ConfigPanel';
 import LayoutCanvas from '@/components/LayoutCanvas';
 import Summary from '@/components/Summary';
 
+const STORAGE_KEY = 'seat-planner-state';
+
+function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.tents?.length > 0 && parsed?.activeTentId) {
+      return parsed;
+    }
+  } catch {
+    // ignore corrupt data
+  }
+  return null;
+}
+
 export default function Home() {
-  const [tents, setTents] = useState<TentConfig[]>([
-    createDefaultTent('tent-1', 'Tenda 1'),
-  ]);
-  const [activeTentId, setActiveTentId] = useState('tent-1');
+  const [tents, setTents] = useState<TentConfig[]>(() => {
+    const saved = loadSavedState();
+    return saved ? saved.tents : [createDefaultTent('tent-1', 'Tenda 1')];
+  });
+  const [activeTentId, setActiveTentId] = useState(() => {
+    const saved = loadSavedState();
+    return saved ? saved.activeTentId : 'tent-1';
+  });
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tents, activeTentId }));
+    } catch {
+      // ignore quota exceeded
+    }
+  }, [tents, activeTentId]);
 
   const activeTent = tents.find((t) => t.id === activeTentId) ?? tents[0];
 
@@ -74,6 +103,33 @@ export default function Home() {
   const updateAltar = useCallback(
     (altar: AltarConfig) => {
       updateTent({ ...activeTent, altar });
+    },
+    [activeTent, updateTent]
+  );
+
+  const addFurniture = useCallback(
+    (item: FurnitureItem) => {
+      updateTent({ ...activeTent, furniture: [...activeTent.furniture, item] });
+    },
+    [activeTent, updateTent]
+  );
+
+  const updateFurniture = useCallback(
+    (item: FurnitureItem) => {
+      updateTent({
+        ...activeTent,
+        furniture: activeTent.furniture.map((f) => (f.id === item.id ? item : f)),
+      });
+    },
+    [activeTent, updateTent]
+  );
+
+  const removeFurniture = useCallback(
+    (id: string) => {
+      updateTent({
+        ...activeTent,
+        furniture: activeTent.furniture.filter((f) => f.id !== id),
+      });
     },
     [activeTent, updateTent]
   );
@@ -155,6 +211,9 @@ export default function Home() {
             onUpdateExclusionZone={updateExclusionZone}
             onRemoveExclusionZone={removeExclusionZone}
             onUpdateAltar={updateAltar}
+            onAddFurniture={addFurniture}
+            onUpdateFurniture={updateFurniture}
+            onRemoveFurniture={removeFurniture}
           />
           <Summary result={layout} tentName={activeTent.name} />
         </main>

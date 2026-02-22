@@ -1,3 +1,19 @@
+export type FurnitureType = 'tv' | 'door';
+
+export interface FurnitureItem {
+  id: string;
+  type: FurnitureType;
+  label: string;
+  /** X position in cm from left edge */
+  xCm: number;
+  /** Y position in cm from top (front) edge */
+  yCm: number;
+  /** Width in cm */
+  widthCm: number;
+  /** Height/depth in cm */
+  heightCm: number;
+}
+
 export interface AltarConfig {
   /** X position in cm from left edge */
   xCm: number;
@@ -36,6 +52,8 @@ export interface TentConfig {
   rightAisleCm: number;
   /** Exclusion zones (no-chair areas) */
   exclusionZones: ExclusionZone[];
+  /** Furniture items (TV monitors, doors) */
+  furniture: FurnitureItem[];
 }
 
 export interface ExclusionZone {
@@ -98,5 +116,6 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     leftAisleCm: 0,
     rightAisleCm: 0,
     exclusionZones: [],
+    furniture: [],
   };
 }

@@ -322,6 +322,22 @@ body {
   font-style: italic;
 }
 
+.furniture-item-config {
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.furniture-item-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 6px;
+}
+
 /* ====== Canvas ====== */
 .canvas-container {
   flex: 1;

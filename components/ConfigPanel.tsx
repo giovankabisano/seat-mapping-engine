@@ -219,6 +219,52 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                     />
                 </div>
             </section>
+
+            {/* Furniture items */}
+            {tent.furniture.length > 0 && (
+                <section className="config-section">
+                    <h3 className="config-section-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                        Perabot
+                    </h3>
+                    <p className="config-hint">Drag item di canvas untuk mengatur posisi</p>
+                    {tent.furniture.map((item) => (
+                        <div key={item.id} className="furniture-item-config">
+                            <span className="furniture-item-label">
+                                {item.type === 'tv' ? '📺' : '🚪'} {item.label}
+                            </span>
+                            <div className="config-grid">
+                                <NumberInput
+                                    label="Lebar"
+                                    value={item.widthCm}
+                                    unit="cm"
+                                    min={10}
+                                    max={tent.widthM * 100}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        furniture: tent.furniture.map((f) =>
+                                            f.id === item.id ? { ...f, widthCm: v } : f
+                                        ),
+                                    })}
+                                />
+                                <NumberInput
+                                    label="Kedalaman"
+                                    value={item.heightCm}
+                                    unit="cm"
+                                    min={5}
+                                    max={tent.lengthM * 100}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        furniture: tent.furniture.map((f) =>
+                                            f.id === item.id ? { ...f, heightCm: v } : f
+                                        ),
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </section>
+            )}
         </div>
     );
 }
