@@ -265,6 +265,70 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                     ))}
                 </section>
             )}
+
+            {/* Wings */}
+            {tent.wings.length > 0 && (
+                <section className="config-section">
+                    <h3 className="config-section-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9h18v6H3z"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>
+                        Sayap / Ekstensi
+                    </h3>
+                    <p className="config-hint">Atur dimensi sayap di sini</p>
+                    {tent.wings.map((wing) => {
+                        const sideLabel = wing.side === 'left' ? 'Kiri' : wing.side === 'right' ? 'Kanan' : wing.side === 'top' ? 'Atas' : 'Bawah';
+                        const isHorizontal = wing.side === 'left' || wing.side === 'right';
+                        const edgeLength = isHorizontal ? tent.lengthM * 100 : tent.widthM * 100;
+                        return (
+                            <div key={wing.id} className="wing-item-config">
+                                <span className="wing-item-label">
+                                    ✦ Sayap {sideLabel}
+                                </span>
+                                <div className="config-grid">
+                                    <NumberInput
+                                        label={isHorizontal ? 'Lebar (keluar)' : 'Tinggi (keluar)'}
+                                        value={wing.widthCm}
+                                        unit="cm"
+                                        min={100}
+                                        max={1000}
+                                        step={10}
+                                        onChange={(v) => update({
+                                            wings: tent.wings.map((w) =>
+                                                w.id === wing.id ? { ...w, widthCm: v } : w
+                                            ),
+                                        })}
+                                    />
+                                    <NumberInput
+                                        label="Panjang"
+                                        value={wing.lengthCm}
+                                        unit="cm"
+                                        min={100}
+                                        max={edgeLength}
+                                        step={10}
+                                        onChange={(v) => update({
+                                            wings: tent.wings.map((w) =>
+                                                w.id === wing.id ? { ...w, lengthCm: v } : w
+                                            ),
+                                        })}
+                                    />
+                                    <NumberInput
+                                        label="Offset"
+                                        value={wing.offsetCm}
+                                        unit="cm"
+                                        min={0}
+                                        max={Math.max(0, edgeLength - wing.lengthCm)}
+                                        step={10}
+                                        onChange={(v) => update({
+                                            wings: tent.wings.map((w) =>
+                                                w.id === wing.id ? { ...w, offsetCm: v } : w
+                                            ),
+                                        })}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </section>
+            )}
         </div>
     );
 }

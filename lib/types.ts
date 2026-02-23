@@ -14,6 +14,19 @@ export interface FurnitureItem {
   heightCm: number;
 }
 
+export type WingSide = 'left' | 'right' | 'top' | 'bottom';
+
+export interface WingConfig {
+  id: string;
+  side: WingSide;
+  /** Offset along the edge from its start (cm) */
+  offsetCm: number;
+  /** How far the wing extends outward from the tent edge (cm) */
+  widthCm: number;
+  /** How long the wing spans along the edge (cm) */
+  lengthCm: number;
+}
+
 export interface AltarConfig {
   /** X position in cm from left edge */
   xCm: number;
@@ -54,6 +67,8 @@ export interface TentConfig {
   exclusionZones: ExclusionZone[];
   /** Furniture items (TV monitors, doors) */
   furniture: FurnitureItem[];
+  /** Wing extensions for non-rectangular shapes */
+  wings: WingConfig[];
 }
 
 export interface ExclusionZone {
@@ -73,9 +88,13 @@ export interface ChairPosition {
   row: number;
   col: number;
   block: number;
+  /** Absolute X in the global coordinate system (cm) */
   xCm: number;
+  /** Absolute Y in the global coordinate system (cm) */
   yCm: number;
   excluded: boolean;
+  /** null = main tent, otherwise wing id */
+  wingId: string | null;
 }
 
 export interface LayoutResult {
@@ -117,5 +136,6 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     rightAisleCm: 0,
     exclusionZones: [],
     furniture: [],
+    wings: [],
   };
 }

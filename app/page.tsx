@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { TentConfig, ExclusionZone, AltarConfig, FurnitureItem, createDefaultTent } from '@/lib/types';
+import { TentConfig, ExclusionZone, AltarConfig, FurnitureItem, WingConfig, createDefaultTent } from '@/lib/types';
 import { calculateLayout } from '@/lib/seatCalculator';
 import ConfigPanel from '@/components/ConfigPanel';
 import LayoutCanvas from '@/components/LayoutCanvas';
@@ -15,7 +15,14 @@ function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null 
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.tents?.length > 0 && parsed?.activeTentId) {
-      return parsed;
+      // Migrate old saved state: add defaults for new properties
+      const migratedTents = parsed.tents.map((t: Record<string, unknown>) => ({
+        ...t,
+        furniture: t.furniture ?? [],
+        wings: t.wings ?? [],
+        exclusionZones: t.exclusionZones ?? [],
+      }));
+      return { tents: migratedTents as TentConfig[], activeTentId: parsed.activeTentId };
     }
   } catch {
     // ignore corrupt data
@@ -134,6 +141,33 @@ export default function Home() {
     [activeTent, updateTent]
   );
 
+  const addWing = useCallback(
+    (wing: WingConfig) => {
+      updateTent({ ...activeTent, wings: [...activeTent.wings, wing] });
+    },
+    [activeTent, updateTent]
+  );
+
+  const updateWing = useCallback(
+    (wing: WingConfig) => {
+      updateTent({
+        ...activeTent,
+        wings: activeTent.wings.map((w) => (w.id === wing.id ? wing : w)),
+      });
+    },
+    [activeTent, updateTent]
+  );
+
+  const removeWing = useCallback(
+    (id: string) => {
+      updateTent({
+        ...activeTent,
+        wings: activeTent.wings.filter((w) => w.id !== id),
+      });
+    },
+    [activeTent, updateTent]
+  );
+
   // Total across all tents
   const totalAllTents = useMemo(() => {
     return tents.reduce((sum, t) => sum + calculateLayout(t).totalChairs, 0);
@@ -214,6 +248,9 @@ export default function Home() {
             onAddFurniture={addFurniture}
             onUpdateFurniture={updateFurniture}
             onRemoveFurniture={removeFurniture}
+            onAddWing={addWing}
+            onUpdateWing={updateWing}
+            onRemoveWing={removeWing}
           />
           <Summary result={layout} tentName={activeTent.name} />
         </main>

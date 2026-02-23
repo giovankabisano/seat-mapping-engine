@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { TentConfig, LayoutResult, ExclusionZone, AltarConfig, FurnitureItem, FurnitureType } from '@/lib/types';
+import { TentConfig, LayoutResult, ExclusionZone, AltarConfig, FurnitureItem, FurnitureType, WingConfig, WingSide } from '@/lib/types';
+import { getWingRect, getTotalBounds } from '@/lib/seatCalculator';
 
 interface LayoutCanvasProps {
     tent: TentConfig;
@@ -13,16 +14,22 @@ interface LayoutCanvasProps {
     onAddFurniture: (item: FurnitureItem) => void;
     onUpdateFurniture: (item: FurnitureItem) => void;
     onRemoveFurniture: (id: string) => void;
+    onAddWing: (wing: WingConfig) => void;
+    onUpdateWing: (wing: WingConfig) => void;
+    onRemoveWing: (id: string) => void;
 }
 
 const RULER_SIZE = 30;
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 5;
 
-// Furniture appearance config
 const FURNITURE_STYLES: Record<FurnitureType, { color: string; hoverColor: string; icon: string; bgAlpha: number; hoverBgAlpha: number }> = {
     tv: { color: '#00b8d4', hoverColor: '#26c6da', icon: '📺', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
     door: { color: '#ff7043', hoverColor: '#ff8a65', icon: '🚪', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
+};
+
+const WING_SIDE_LABELS: Record<WingSide, string> = {
+    left: 'Kiri', right: 'Kanan', top: 'Atas', bottom: 'Bawah',
 };
 
 type DragTarget =
@@ -42,6 +49,9 @@ export default function LayoutCanvas({
     onAddFurniture,
     onUpdateFurniture,
     onRemoveFurniture,
+    onAddWing,
+    onUpdateWing,
+    onRemoveWing,
 }: LayoutCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -53,8 +63,8 @@ export default function LayoutCanvas({
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [mode, setMode] = useState<'view' | 'draw'>('view');
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+    const [showWingMenu, setShowWingMenu] = useState(false);
 
-    // Zoom & pan
     const [zoom, setZoom] = useState(1);
     const [panX, setPanX] = useState(0);
     const [panY, setPanY] = useState(0);
@@ -63,25 +73,30 @@ export default function LayoutCanvas({
     const tentWidthCm = tent.widthM * 100;
     const tentLengthCm = tent.lengthM * 100;
 
+    // Compute bounding box of entire layout (main + wings)
+    const bounds = getTotalBounds(tent);
+
     const drawAreaW = canvasSize.w - RULER_SIZE;
     const drawAreaH = canvasSize.h - RULER_SIZE;
-    const basePad = 30;
-    const baseScaleX = (drawAreaW - basePad * 2) / tentWidthCm;
-    const baseScaleY = (drawAreaH - basePad * 2) / tentLengthCm;
+    const basePad = 40;
+    const baseScaleX = (drawAreaW - basePad * 2) / bounds.widthCm;
+    const baseScaleY = (drawAreaH - basePad * 2) / bounds.heightCm;
     const baseScale = Math.min(baseScaleX, baseScaleY);
     const scale = baseScale * zoom;
 
     const centerX = RULER_SIZE + drawAreaW / 2;
     const centerY = RULER_SIZE + drawAreaH / 2;
-    const tentOriginX = centerX - (tentWidthCm * scale) / 2 + panX;
-    const tentOriginY = centerY - (tentLengthCm * scale) / 2 + panY;
+
+    // The origin shifts so the bounding box is centered
+    const globalOriginX = centerX - (bounds.widthCm * scale) / 2 + panX - bounds.xCm * scale;
+    const globalOriginY = centerY - (bounds.heightCm * scale) / 2 + panY - bounds.yCm * scale;
 
     const pxToCm = useCallback(
         (px: number, py: number) => ({
-            xCm: (px - tentOriginX) / scale,
-            yCm: (py - tentOriginY) / scale,
+            xCm: (px - globalOriginX) / scale,
+            yCm: (py - globalOriginY) / scale,
         }),
-        [tentOriginX, tentOriginY, scale]
+        [globalOriginX, globalOriginY, scale]
     );
 
     useEffect(() => {
@@ -107,13 +122,11 @@ export default function LayoutCanvas({
         return xCm >= rect.xCm && xCm <= rect.xCm + rect.widthCm && yCm >= rect.yCm && yCm <= rect.yCm + rect.heightCm;
     }
 
-    // Add furniture helper
     function addNewFurniture(type: FurnitureType) {
         const defaults = type === 'tv'
             ? { widthCm: 120, heightCm: 15, label: `TV ${tent.furniture.filter(f => f.type === 'tv').length + 1}` }
             : { widthCm: 100, heightCm: 30, label: `Pintu ${tent.furniture.filter(f => f.type === 'door').length + 1}` };
-
-        const item: FurnitureItem = {
+        onAddFurniture({
             id: `${type}-${Date.now()}`,
             type,
             label: defaults.label,
@@ -121,8 +134,23 @@ export default function LayoutCanvas({
             yCm: type === 'door' ? tentLengthCm - defaults.heightCm : 0,
             widthCm: defaults.widthCm,
             heightCm: defaults.heightCm,
-        };
-        onAddFurniture(item);
+        });
+    }
+
+    function addWing(side: WingSide) {
+        const existing = tent.wings.filter(w => w.side === side);
+        const wingId = `wing-${side}-${Date.now()}`;
+        const lengthAlong = (side === 'left' || side === 'right') ? tentLengthCm : tentWidthCm;
+        const wingLength = Math.min(300, lengthAlong);
+        const offset = (lengthAlong - wingLength) / 2;
+        onAddWing({
+            id: wingId,
+            side,
+            offsetCm: Math.round(offset),
+            widthCm: 300,
+            lengthCm: Math.round(wingLength),
+        });
+        setShowWingMenu(false);
     }
 
     // ===== DRAW =====
@@ -140,31 +168,60 @@ export default function LayoutCanvas({
         ctx.fillStyle = '#0f0f1a';
         ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
 
-        // Clip to draw area
         ctx.save();
         ctx.beginPath();
         ctx.rect(RULER_SIZE, RULER_SIZE, drawAreaW, drawAreaH);
         ctx.clip();
 
-        // Tent boundary
+        // === Helper to convert cm to px ===
+        const toX = (cm: number) => globalOriginX + cm * scale;
+        const toY = (cm: number) => globalOriginY + cm * scale;
+
+        // === Draw main tent boundary ===
         ctx.strokeStyle = '#3b3b5c';
         ctx.lineWidth = 2;
-        ctx.strokeRect(tentOriginX, tentOriginY, tentWidthCm * scale, tentLengthCm * scale);
+        ctx.strokeRect(toX(0), toY(0), tentWidthCm * scale, tentLengthCm * scale);
 
-        // Grid
+        // === Draw wing boundaries ===
+        for (const wing of tent.wings) {
+            const wr = getWingRect(wing, tentWidthCm, tentLengthCm);
+            const wx = toX(wr.xCm);
+            const wy = toY(wr.yCm);
+            const ww = wr.widthCm * scale;
+            const wh = wr.heightCm * scale;
+
+            // Wing fill
+            ctx.fillStyle = 'rgba(46, 139, 87, 0.06)';
+            ctx.fillRect(wx, wy, ww, wh);
+
+            // Wing border
+            ctx.strokeStyle = '#2e8b57';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(wx, wy, ww, wh);
+
+            // Wing label
+            ctx.fillStyle = 'rgba(46, 139, 87, 0.6)';
+            ctx.font = `bold ${Math.max(9, 10 * scale)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`✦ Sayap ${WING_SIDE_LABELS[wing.side]}`, wx + ww / 2, wy + wh / 2);
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        // === Grid (main tent only) ===
         ctx.strokeStyle = '#1a1a2e';
         ctx.lineWidth = 0.5;
         const gridStepCm = 100;
         for (let x = gridStepCm; x < tentWidthCm; x += gridStepCm) {
             ctx.beginPath();
-            ctx.moveTo(tentOriginX + x * scale, tentOriginY);
-            ctx.lineTo(tentOriginX + x * scale, tentOriginY + tentLengthCm * scale);
+            ctx.moveTo(toX(x), toY(0));
+            ctx.lineTo(toX(x), toY(tentLengthCm));
             ctx.stroke();
         }
         for (let y = gridStepCm; y < tentLengthCm; y += gridStepCm) {
             ctx.beginPath();
-            ctx.moveTo(tentOriginX, tentOriginY + y * scale);
-            ctx.lineTo(tentOriginX + tentWidthCm * scale, tentOriginY + y * scale);
+            ctx.moveTo(toX(0), toY(y));
+            ctx.lineTo(toX(tentWidthCm), toY(y));
             ctx.stroke();
         }
 
@@ -175,28 +232,27 @@ export default function LayoutCanvas({
         if (leftAisleCm > 0) {
             const lw = leftAisleCm * scale;
             ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
-            ctx.fillRect(tentOriginX, tentOriginY, lw, tentLengthCm * scale);
+            ctx.fillRect(toX(0), toY(0), lw, tentLengthCm * scale);
             ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
-            ctx.moveTo(tentOriginX + lw, tentOriginY);
-            ctx.lineTo(tentOriginX + lw, tentOriginY + tentLengthCm * scale);
+            ctx.moveTo(toX(leftAisleCm), toY(0));
+            ctx.lineTo(toX(leftAisleCm), toY(tentLengthCm));
             ctx.stroke();
             ctx.setLineDash([]);
         }
 
         if (rightAisleCm > 0) {
             const rw = rightAisleCm * scale;
-            const rx = tentOriginX + tentWidthCm * scale - rw;
             ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
-            ctx.fillRect(rx, tentOriginY, rw, tentLengthCm * scale);
+            ctx.fillRect(toX(tentWidthCm) - rw, toY(0), rw, tentLengthCm * scale);
             ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
-            ctx.moveTo(rx, tentOriginY);
-            ctx.lineTo(rx, tentOriginY + tentLengthCm * scale);
+            ctx.moveTo(toX(tentWidthCm - rightAisleCm), toY(0));
+            ctx.lineTo(toX(tentWidthCm - rightAisleCm), toY(tentLengthCm));
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -210,34 +266,40 @@ export default function LayoutCanvas({
             const blockWidth = availableWidth / numBlocks;
 
             for (let i = 1; i <= tent.aisleCount; i++) {
-                const aisleX = tentOriginX + (leftAisleCm + blockWidth * i + tent.aisleWidthCm * (i - 1)) * scale;
+                const aisleXCm = leftAisleCm + blockWidth * i + tent.aisleWidthCm * (i - 1);
                 const aisleW = tent.aisleWidthCm * scale;
                 ctx.fillStyle = 'rgba(100, 120, 200, 0.08)';
-                ctx.fillRect(aisleX, tentOriginY, aisleW, tentLengthCm * scale);
+                ctx.fillRect(toX(aisleXCm), toY(0), aisleW, tentLengthCm * scale);
                 ctx.strokeStyle = 'rgba(100, 120, 200, 0.3)';
                 ctx.lineWidth = 1;
                 ctx.setLineDash([4, 4]);
                 ctx.beginPath();
-                ctx.moveTo(aisleX, tentOriginY);
-                ctx.lineTo(aisleX, tentOriginY + tentLengthCm * scale);
-                ctx.moveTo(aisleX + aisleW, tentOriginY);
-                ctx.lineTo(aisleX + aisleW, tentOriginY + tentLengthCm * scale);
+                ctx.moveTo(toX(aisleXCm), toY(0));
+                ctx.lineTo(toX(aisleXCm), toY(tentLengthCm));
+                ctx.moveTo(toX(aisleXCm + tent.aisleWidthCm), toY(0));
+                ctx.lineTo(toX(aisleXCm + tent.aisleWidthCm), toY(tentLengthCm));
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
         }
 
-        // Chairs
+        // === Chairs (main + wing) ===
         for (const chair of layout.chairs) {
             if (chair.excluded) continue;
-            const cx = tentOriginX + chair.xCm * scale;
-            const cy = tentOriginY + chair.yCm * scale;
+            const cx = toX(chair.xCm);
+            const cy = toY(chair.yCm);
             const cw = tent.chairWidthCm * scale;
             const ch = tent.chairDepthCm * scale;
 
+            const isWing = chair.wingId !== null;
             const chairGrad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
-            chairGrad.addColorStop(0, '#6c5ce7');
-            chairGrad.addColorStop(1, '#4834d4');
+            if (isWing) {
+                chairGrad.addColorStop(0, '#2e8b57');
+                chairGrad.addColorStop(1, '#1a6b42');
+            } else {
+                chairGrad.addColorStop(0, '#6c5ce7');
+                chairGrad.addColorStop(1, '#4834d4');
+            }
             ctx.fillStyle = chairGrad;
             ctx.beginPath();
             ctx.roundRect(cx, cy, cw, ch, Math.max(1, 2 * scale));
@@ -247,11 +309,11 @@ export default function LayoutCanvas({
             ctx.stroke();
         }
 
-        // Altar
+        // === Altar ===
         const altar = tent.altar;
         if (altar.widthCm > 0 && altar.heightCm > 0) {
-            const ax = tentOriginX + altar.xCm * scale;
-            const ay = tentOriginY + altar.yCm * scale;
+            const ax = toX(altar.xCm);
+            const ay = toY(altar.yCm);
             const aw = altar.widthCm * scale;
             const ah = altar.heightCm * scale;
             const isHov = hoveredItem === 'altar';
@@ -287,30 +349,26 @@ export default function LayoutCanvas({
             }
         }
 
-        // Furniture items (TV, Door)
+        // === Furniture ===
         for (const item of tent.furniture) {
-            const fx = tentOriginX + item.xCm * scale;
-            const fy = tentOriginY + item.yCm * scale;
+            const fx = toX(item.xCm);
+            const fy = toY(item.yCm);
             const fw = item.widthCm * scale;
             const fh = item.heightCm * scale;
             const isHov = hoveredItem === item.id;
             const style = FURNITURE_STYLES[item.type];
 
-            // Background
-            const alpha = isHov ? style.hoverBgAlpha : style.bgAlpha;
-            ctx.fillStyle = hexToRgba(style.color, alpha);
+            ctx.fillStyle = hexToRgba(style.color, isHov ? style.hoverBgAlpha : style.bgAlpha);
             ctx.beginPath();
             ctx.roundRect(fx, fy, fw, fh, Math.max(1, 3 * scale));
             ctx.fill();
 
-            // Border
             ctx.strokeStyle = isHov ? style.hoverColor : style.color;
             ctx.lineWidth = isHov ? 2 : 1.5;
             ctx.beginPath();
             ctx.roundRect(fx, fy, fw, fh, Math.max(1, 3 * scale));
             ctx.stroke();
 
-            // Icon + Label
             ctx.fillStyle = isHov ? style.hoverColor : style.color;
             ctx.font = `bold ${Math.max(9, 11 * scale)}px system-ui, sans-serif`;
             ctx.textAlign = 'center';
@@ -318,7 +376,6 @@ export default function LayoutCanvas({
             ctx.fillText(`${style.icon} ${item.label}`, fx + fw / 2, fy + fh / 2);
             ctx.textBaseline = 'alphabetic';
 
-            // Drag hint
             if (isHov) {
                 ctx.fillStyle = hexToRgba(style.hoverColor, 0.7);
                 ctx.font = `${Math.max(7, 9 * scale)}px system-ui, sans-serif`;
@@ -329,10 +386,10 @@ export default function LayoutCanvas({
             }
         }
 
-        // Exclusion zones
+        // === Exclusion zones ===
         for (const zone of tent.exclusionZones) {
-            const zx = tentOriginX + zone.xCm * scale;
-            const zy = tentOriginY + zone.yCm * scale;
+            const zx = toX(zone.xCm);
+            const zy = toY(zone.yCm);
             const zw = zone.widthCm * scale;
             const zh = zone.heightCm * scale;
             const isHov = hoveredItem === zone.id;
@@ -384,6 +441,7 @@ export default function LayoutCanvas({
         ctx.lineTo(canvasSize.w, RULER_SIZE);
         ctx.stroke();
 
+        // Ruler ticks — use global coordinates
         const pixelsPerMeter = 100 * scale;
         let rulerStepCm: number;
         if (pixelsPerMeter > 200) rulerStepCm = 25;
@@ -396,10 +454,13 @@ export default function LayoutCanvas({
         ctx.lineWidth = 1;
         ctx.font = '9px system-ui, sans-serif';
 
+        // Top ruler — covers from bounds.xCm to bounds.xCm + bounds.widthCm
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        for (let cm = 0; cm <= tentWidthCm; cm += rulerStepCm) {
-            const px = tentOriginX + cm * scale;
+        const rulerStartXCm = Math.floor(bounds.xCm / rulerStepCm) * rulerStepCm;
+        const rulerEndXCm = bounds.xCm + bounds.widthCm;
+        for (let cm = rulerStartXCm; cm <= rulerEndXCm; cm += rulerStepCm) {
+            const px = toX(cm);
             if (px < RULER_SIZE - 5 || px > canvasSize.w + 5) continue;
             const isMajor = cm % 100 === 0;
             const tickH = isMajor ? 10 : 5;
@@ -410,10 +471,13 @@ export default function LayoutCanvas({
             if (isMajor) ctx.fillText((cm / 100).toString(), px, RULER_SIZE - tickH - 2);
         }
 
+        // Left ruler
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        for (let cm = 0; cm <= tentLengthCm; cm += rulerStepCm) {
-            const py = tentOriginY + cm * scale;
+        const rulerStartYCm = Math.floor(bounds.yCm / rulerStepCm) * rulerStepCm;
+        const rulerEndYCm = bounds.yCm + bounds.heightCm;
+        for (let cm = rulerStartYCm; cm <= rulerEndYCm; cm += rulerStepCm) {
+            const py = toY(cm);
             if (py < RULER_SIZE - 5 || py > canvasSize.h + 5) continue;
             const isMajor = cm % 100 === 0;
             const tickW = isMajor ? 10 : 5;
@@ -430,7 +494,7 @@ export default function LayoutCanvas({
         ctx.textBaseline = 'middle';
         ctx.fillText('m', RULER_SIZE / 2, RULER_SIZE / 2);
 
-    }, [canvasSize, tent, layout, drawing, drawStart, drawEnd, hoveredItem, zoom, panX, panY, tentOriginX, tentOriginY, scale, drawAreaW, drawAreaH, tentWidthCm, tentLengthCm]);
+    }, [canvasSize, tent, layout, drawing, drawStart, drawEnd, hoveredItem, zoom, panX, panY, globalOriginX, globalOriginY, scale, drawAreaW, drawAreaH, tentWidthCm, tentLengthCm, bounds]);
 
     // Wheel zoom
     useEffect(() => {
@@ -443,16 +507,20 @@ export default function LayoutCanvas({
             const mouseY = e.clientY - rect.top;
             const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * zoomDelta));
+
+            // Zoom toward cursor: keep the point under cursor fixed
             const zoomRatio = newZoom / zoom;
-            const newPanX = mouseX - (mouseX - panX - centerX + (tentWidthCm * baseScale * zoom) / 2) * zoomRatio - centerX + (tentWidthCm * baseScale * newZoom) / 2;
-            const newPanY = mouseY - (mouseY - panY - centerY + (tentLengthCm * baseScale * zoom) / 2) * zoomRatio - centerY + (tentLengthCm * baseScale * newZoom) / 2;
+            // Current point under cursor in "unzoomed" space
+            const newPanX = mouseX - (mouseX - panX) * zoomRatio;
+            const newPanY = mouseY - (mouseY - panY) * zoomRatio;
+
             setZoom(newZoom);
             setPanX(newPanX);
             setPanY(newPanY);
         };
         canvas.addEventListener('wheel', handleWheel, { passive: false });
         return () => canvas.removeEventListener('wheel', handleWheel);
-    }, [zoom, panX, panY, centerX, centerY, tentWidthCm, tentLengthCm, baseScale]);
+    }, [zoom, panX, panY]);
 
     // Mouse handlers
     const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -469,7 +537,6 @@ export default function LayoutCanvas({
         }
 
         if (mode === 'view') {
-            // Check furniture first (they're on top)
             for (const item of [...tent.furniture].reverse()) {
                 if (hitTest(xCm, yCm, item)) {
                     setDragTarget({ type: 'furniture', id: item.id });
@@ -477,15 +544,11 @@ export default function LayoutCanvas({
                     return;
                 }
             }
-
-            // Check altar
             if (hitTest(xCm, yCm, tent.altar)) {
                 setDragTarget({ type: 'altar' });
                 setDragOffset({ x: xCm - tent.altar.xCm, y: yCm - tent.altar.yCm });
                 return;
             }
-
-            // Check exclusion zones
             for (const zone of tent.exclusionZones) {
                 if (hitTest(xCm, yCm, zone)) {
                     setDragTarget({ type: 'zone', id: zone.id });
@@ -494,7 +557,6 @@ export default function LayoutCanvas({
                 }
             }
 
-            // Empty area = pan
             setDragTarget({ type: 'pan' });
             setLastPanPos({ x: px, y: py });
             return;
@@ -553,19 +615,14 @@ export default function LayoutCanvas({
             }
         }
 
-        if (drawing) {
-            setDrawEnd({ x: px, y: py });
-            return;
-        }
+        if (drawing) { setDrawEnd({ x: px, y: py }); return; }
 
         // Hover
         let found: string | null = null;
         for (const item of [...tent.furniture].reverse()) {
             if (hitTest(xCm, yCm, item)) { found = item.id; break; }
         }
-        if (!found && hitTest(xCm, yCm, tent.altar)) {
-            found = 'altar';
-        }
+        if (!found && hitTest(xCm, yCm, tent.altar)) found = 'altar';
         if (!found) {
             for (const zone of tent.exclusionZones) {
                 if (hitTest(xCm, yCm, zone)) { found = zone.id; break; }
@@ -575,10 +632,7 @@ export default function LayoutCanvas({
     };
 
     const handleMouseUp = () => {
-        if (dragTarget) {
-            setDragTarget(null);
-            return;
-        }
+        if (dragTarget) { setDragTarget(null); return; }
         if (drawing) {
             setDrawing(false);
             const start = pxToCm(drawStart.x, drawStart.y);
@@ -611,6 +665,9 @@ export default function LayoutCanvas({
 
     const zoomPercent = Math.round(zoom * 100);
 
+    // Count wing chairs
+    const wingChairCount = layout.chairs.filter(c => !c.excluded && c.wingId !== null).length;
+
     return (
         <div className="canvas-container">
             <div className="canvas-toolbar">
@@ -627,43 +684,55 @@ export default function LayoutCanvas({
                     <span>Zona</span>
                 </button>
 
-                {/* Furniture add buttons */}
-                <button
-                    className="toolbar-btn"
-                    onClick={() => addNewFurniture('tv')}
-                    title="Tambah TV Monitor"
-                >
-                    <span>📺</span>
-                    <span>+ TV</span>
+                <button className="toolbar-btn" onClick={() => addNewFurniture('tv')} title="Tambah TV Monitor">
+                    <span>📺</span><span>+ TV</span>
                 </button>
-                <button
-                    className="toolbar-btn"
-                    onClick={() => addNewFurniture('door')}
-                    title="Tambah Pintu"
-                >
-                    <span>🚪</span>
-                    <span>+ Pintu</span>
+                <button className="toolbar-btn" onClick={() => addNewFurniture('door')} title="Tambah Pintu">
+                    <span>🚪</span><span>+ Pintu</span>
                 </button>
 
-                {/* Badges for exclusion zones */}
+                {/* Wing dropdown */}
+                <div className="wing-dropdown-container">
+                    <button className="toolbar-btn" onClick={() => setShowWingMenu(!showWingMenu)} title="Tambah Sayap">
+                        <span>🏗️</span><span>+ Sayap</span>
+                    </button>
+                    {showWingMenu && (
+                        <div className="wing-dropdown-menu">
+                            <button onClick={() => addWing('left')}>← Sayap Kiri</button>
+                            <button onClick={() => addWing('right')}>Sayap Kanan →</button>
+                            <button onClick={() => addWing('top')}>↑ Sayap Atas</button>
+                            <button onClick={() => addWing('bottom')}>↓ Sayap Bawah</button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Badges */}
                 {tent.exclusionZones.length > 0 && (
                     <div className="zone-badges">
                         {tent.exclusionZones.map((z) => (
                             <span key={z.id} className="zone-badge">
                                 {z.label}
-                                <button className="zone-badge-remove" onClick={() => onRemoveExclusionZone(z.id)} title="Hapus zona">×</button>
+                                <button className="zone-badge-remove" onClick={() => onRemoveExclusionZone(z.id)}>×</button>
                             </span>
                         ))}
                     </div>
                 )}
-
-                {/* Badges for furniture */}
                 {tent.furniture.length > 0 && (
                     <div className="zone-badges">
                         {tent.furniture.map((f) => (
                             <span key={f.id} className="zone-badge" style={{ borderColor: FURNITURE_STYLES[f.type].color }}>
                                 {FURNITURE_STYLES[f.type].icon} {f.label}
-                                <button className="zone-badge-remove" onClick={() => onRemoveFurniture(f.id)} title="Hapus">×</button>
+                                <button className="zone-badge-remove" onClick={() => onRemoveFurniture(f.id)}>×</button>
+                            </span>
+                        ))}
+                    </div>
+                )}
+                {tent.wings.length > 0 && (
+                    <div className="zone-badges">
+                        {tent.wings.map((w) => (
+                            <span key={w.id} className="zone-badge" style={{ borderColor: '#2e8b57' }}>
+                                ✦ Sayap {WING_SIDE_LABELS[w.side]}
+                                <button className="zone-badge-remove" onClick={() => onRemoveWing(w.id)}>×</button>
                             </span>
                         ))}
                     </div>
@@ -673,12 +742,11 @@ export default function LayoutCanvas({
                     <span className="toolbar-hint">🖱 Klik & drag di canvas untuk membuat zona…</span>
                 )}
 
-                {/* Zoom controls */}
                 <div className="zoom-controls">
-                    <button className="zoom-btn" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))} title="Zoom Out">−</button>
+                    <button className="zoom-btn" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))}>−</button>
                     <span className="zoom-label">{zoomPercent}%</span>
-                    <button className="zoom-btn" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))} title="Zoom In">+</button>
-                    <button className="zoom-btn zoom-btn-reset" onClick={resetZoom} title="Reset View">⟲</button>
+                    <button className="zoom-btn" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))}>+</button>
+                    <button className="zoom-btn zoom-btn-reset" onClick={resetZoom}>⟲</button>
                 </div>
             </div>
             <div ref={containerRef} className="canvas-wrapper">
@@ -698,10 +766,10 @@ export default function LayoutCanvas({
             </div>
             <div className="canvas-legend">
                 <span className="legend-item"><span className="legend-swatch legend-chair"></span> Kursi</span>
+                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(46,139,87,0.4)', border: '1px solid #2e8b57' }}></span> Sayap</span>
                 <span className="legend-item"><span className="legend-swatch legend-altar"></span> Altar</span>
-                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(0, 184, 212, 0.3)', border: '1px solid rgba(0, 184, 212, 0.6)' }}></span> TV</span>
-                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(255, 112, 67, 0.3)', border: '1px solid rgba(255, 112, 67, 0.6)' }}></span> Pintu</span>
-                <span className="legend-item"><span className="legend-swatch legend-aisle"></span> Lorong</span>
+                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(0,184,212,0.3)', border: '1px solid rgba(0,184,212,0.6)' }}></span> TV</span>
+                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(255,112,67,0.3)', border: '1px solid rgba(255,112,67,0.6)' }}></span> Pintu</span>
                 <span className="legend-item"><span className="legend-swatch legend-zone"></span> Zona</span>
                 <span className="legend-item legend-hint">Scroll = Zoom · Drag = Pan</span>
             </div>
@@ -709,7 +777,6 @@ export default function LayoutCanvas({
     );
 }
 
-// Helper
 function hexToRgba(hex: string, alpha: number): string {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
