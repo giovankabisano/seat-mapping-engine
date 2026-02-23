@@ -139,7 +139,7 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
             <section className="config-section">
                 <h3 className="config-section-title">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22V2"></path><path d="M20 22V2"></path><path d="M12 6v12"></path></svg>
-                    Lorong Tengah
+                    Lorong Tengah (↔)
                 </h3>
                 <div className="config-grid">
                     <NumberInput
@@ -159,6 +159,34 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                         max={300}
                         step={5}
                         onChange={(v) => update({ aisleWidthCm: v })}
+                    />
+                </div>
+            </section>
+
+            {/* Vertical Center Aisles */}
+            <section className="config-section">
+                <h3 className="config-section-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 4h20"></path><path d="M2 20h20"></path><path d="M6 12h12"></path></svg>
+                    Lorong Tengah (↕)
+                </h3>
+                <div className="config-grid">
+                    <NumberInput
+                        label="Jumlah"
+                        value={tent.verticalAisleCount || 0}
+                        unit="buah"
+                        min={0}
+                        max={10}
+                        step={1}
+                        onChange={(v) => update({ verticalAisleCount: Math.floor(v) })}
+                    />
+                    <NumberInput
+                        label="Lebar"
+                        value={tent.verticalAisleWidthCm || 100}
+                        unit="cm"
+                        min={50}
+                        max={300}
+                        step={5}
+                        onChange={(v) => update({ verticalAisleWidthCm: v })}
                     />
                 </div>
             </section>

@@ -318,6 +318,35 @@ export default function LayoutCanvas({
             }
         }
 
+        // Vertical center aisles (horizontal lines splitting top-to-bottom)
+        const vAisleCount = tent.verticalAisleCount || 0;
+        const vAisleWidth = tent.verticalAisleWidthCm || 100;
+        if (vAisleCount > 0) {
+            const topAisleCm = tent.topAisleCm || 0;
+            const bottomAisleCm = tent.bottomAisleCm || 0;
+            const totalVAisleH = vAisleCount * vAisleWidth;
+            const availableHeight = tentLengthCm - topAisleCm - bottomAisleCm - totalVAisleH;
+            const numBands = vAisleCount + 1;
+            const bandHeight = availableHeight / numBands;
+
+            for (let i = 1; i <= vAisleCount; i++) {
+                const aisleYCm = topAisleCm + bandHeight * i + vAisleWidth * (i - 1);
+                const aisleH = vAisleWidth * scale;
+                ctx.fillStyle = 'rgba(100, 120, 200, 0.08)';
+                ctx.fillRect(toX(0), toY(aisleYCm), tentWidthCm * scale, aisleH);
+                ctx.strokeStyle = 'rgba(100, 120, 200, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(toX(0), toY(aisleYCm));
+                ctx.lineTo(toX(tentWidthCm), toY(aisleYCm));
+                ctx.moveTo(toX(0), toY(aisleYCm + vAisleWidth));
+                ctx.lineTo(toX(tentWidthCm), toY(aisleYCm + vAisleWidth));
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
         // === Chairs (main + wing) ===
         for (const chair of layout.chairs) {
             if (chair.excluded) continue;

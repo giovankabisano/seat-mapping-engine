@@ -24,6 +24,8 @@ function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null 
         bottomAisleCm: t.bottomAisleCm ?? 0,
         topAisleCm: t.topAisleCm ?? 0,
         acConfig: t.acConfig ?? { count: 0, widthCm: 80, depthCm: 20 },
+        verticalAisleCount: t.verticalAisleCount ?? 0,
+        verticalAisleWidthCm: t.verticalAisleWidthCm ?? 100,
       }));
       return { tents: migratedTents as TentConfig[], activeTentId: parsed.activeTentId };
     }

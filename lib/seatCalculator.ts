@@ -113,29 +113,40 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
     const acRects: Rect[] = acPositions.map(ac => ({ xCm: ac.xCm, yCm: ac.yCm, widthCm: ac.widthCm, heightCm: ac.heightCm }));
 
     // ===== Main tent =====
+    // Horizontal aisles (splitting columns left-to-right)
     const aisleCount = Math.max(0, tent.aisleCount);
     const totalAisleWidth = aisleCount * tent.aisleWidthCm;
     const sideAisleWidth = (tent.leftAisleCm || 0) + (tent.rightAisleCm || 0);
     const availableWidthForChairs = tentWidthCm - totalAisleWidth - sideAisleWidth;
     const seatingStartX = tent.leftAisleCm || 0;
 
+    // Vertical aisles (splitting rows top-to-bottom)
+    const vAisleCount = Math.max(0, tent.verticalAisleCount || 0);
+    const vAisleWidth = tent.verticalAisleWidthCm || 100;
+    const totalVAisleHeight = vAisleCount * vAisleWidth;
+
     const cellDepth = tent.chairDepthCm + tent.frontGapCm;
     const bottomAisle = tent.bottomAisleCm || 0;
     const topAisle = tent.topAisleCm || 0;
-    const seatingHeight = tentLengthCm - bottomAisle - topAisle;
+    const seatingHeight = tentLengthCm - bottomAisle - topAisle - totalVAisleHeight;
     const seatingStartY = topAisle;
-    const totalRows = Math.floor(seatingHeight / cellDepth);
     const cellWidth = tent.chairWidthCm + tent.sideGapCm;
 
     const blocksInfo: BlockInfo[] = [];
     let mainChairs: ChairPosition[] = [];
 
-    if (availableWidthForChairs > 0) {
-        const numBlocks = aisleCount + 1;
-        const blockWidth = availableWidthForChairs / numBlocks;
+    if (availableWidthForChairs > 0 && seatingHeight > 0) {
+        // Column blocks (horizontal aisles)
+        const numColBlocks = aisleCount + 1;
+        const blockWidth = availableWidthForChairs / numColBlocks;
         const colsPerBlock = Math.floor(blockWidth / cellWidth);
 
-        for (let b = 0; b < numBlocks; b++) {
+        // Row bands (vertical aisles)
+        const numRowBands = vAisleCount + 1;
+        const bandHeight = seatingHeight / numRowBands;
+        const rowsPerBand = Math.floor(bandHeight / cellDepth);
+
+        for (let b = 0; b < numColBlocks; b++) {
             const xStart = seatingStartX + b * (blockWidth + tent.aisleWidthCm);
             const usedWidth = colsPerBlock * cellWidth - tent.sideGapCm;
             const blockPadding = (blockWidth - usedWidth) / 2;
@@ -147,15 +158,19 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
                 widthCm: blockWidth,
             });
 
-            for (let r = 0; r < totalRows; r++) {
-                for (let c = 0; c < colsPerBlock; c++) {
-                    const cx = xStart + blockPadding + c * cellWidth;
-                    const cy = seatingStartY + r * cellDepth;
-                    const excluded = isExcluded(
-                        cx, cy, tent.chairWidthCm, tent.chairDepthCm,
-                        tent.exclusionZones, tent.altar, tent.furniture, acRects
-                    );
-                    mainChairs.push({ row: r, col: c, block: b, xCm: cx, yCm: cy, excluded, wingId: null });
+            for (let band = 0; band < numRowBands; band++) {
+                const bandStartY = seatingStartY + band * (bandHeight + vAisleWidth);
+                for (let r = 0; r < rowsPerBand; r++) {
+                    for (let c = 0; c < colsPerBlock; c++) {
+                        const cx = xStart + blockPadding + c * cellWidth;
+                        const cy = bandStartY + r * cellDepth;
+                        const globalRow = band * rowsPerBand + r;
+                        const excluded = isExcluded(
+                            cx, cy, tent.chairWidthCm, tent.chairDepthCm,
+                            tent.exclusionZones, tent.altar, tent.furniture, acRects
+                        );
+                        mainChairs.push({ row: globalRow, col: c, block: b, xCm: cx, yCm: cy, excluded, wingId: null });
+                    }
                 }
             }
         }
@@ -183,7 +198,7 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
     return {
         chairs: allChairs,
         totalChairs,
-        totalRows,
+        totalRows: mainChairs.length > 0 ? Math.max(...mainChairs.map(c => c.row)) + 1 : 0,
         blocksInfo,
         usableAreaM2: (tentLengthCm / 100) * (usableWidthCm / 100) + wingAreaM2,
         totalAreaM2,

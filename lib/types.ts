@@ -57,6 +57,10 @@ export interface TentConfig {
   aisleCount: number;
   /** Aisle width in cm */
   aisleWidthCm: number;
+  /** Number of horizontal aisles (splitting top to bottom) */
+  verticalAisleCount: number;
+  /** Horizontal aisle width in cm */
+  verticalAisleWidthCm: number;
   /** Altar — draggable rectangle on the canvas */
   altar: AltarConfig;
   /** Left side aisle width in cm */
@@ -141,6 +145,8 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     frontGapCm: 10,
     aisleCount: 1,
     aisleWidthCm: 100,
+    verticalAisleCount: 0,
+    verticalAisleWidthCm: 100,
     altar: {
       xCm: 250,
       yCm: 0,
