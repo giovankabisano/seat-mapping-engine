@@ -188,6 +188,24 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                         step={5}
                         onChange={(v) => update({ rightAisleCm: v })}
                     />
+                    <NumberInput
+                        label="Bawah"
+                        value={tent.bottomAisleCm}
+                        unit="cm"
+                        min={0}
+                        max={300}
+                        step={5}
+                        onChange={(v) => update({ bottomAisleCm: v })}
+                    />
+                    <NumberInput
+                        label="Atas"
+                        value={tent.topAisleCm}
+                        unit="cm"
+                        min={0}
+                        max={300}
+                        step={5}
+                        onChange={(v) => update({ topAisleCm: v })}
+                    />
                 </div>
             </section>
 
@@ -220,6 +238,78 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                 </div>
             </section>
 
+            {/* Exclusion Zones */}
+            {tent.exclusionZones.length > 0 && (
+                <section className="config-section">
+                    <h3 className="config-section-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+                        Zona Tanpa Kursi
+                    </h3>
+                    <p className="config-hint">Drag zona di canvas untuk mengatur posisi</p>
+                    {tent.exclusionZones.map((zone) => (
+                        <div key={zone.id} className="zone-item-config">
+                            <span className="zone-item-label">
+                                ✕ {zone.label}
+                            </span>
+                            <div className="config-grid">
+                                <NumberInput
+                                    label="Lebar"
+                                    value={zone.widthCm}
+                                    unit="cm"
+                                    min={10}
+                                    max={tent.widthM * 100}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        exclusionZones: tent.exclusionZones.map((z) =>
+                                            z.id === zone.id ? { ...z, widthCm: v } : z
+                                        ),
+                                    })}
+                                />
+                                <NumberInput
+                                    label="Kedalaman"
+                                    value={zone.heightCm}
+                                    unit="cm"
+                                    min={10}
+                                    max={tent.lengthM * 100}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        exclusionZones: tent.exclusionZones.map((z) =>
+                                            z.id === zone.id ? { ...z, heightCm: v } : z
+                                        ),
+                                    })}
+                                />
+                                <NumberInput
+                                    label="Posisi X"
+                                    value={zone.xCm}
+                                    unit="cm"
+                                    min={0}
+                                    max={Math.max(0, tent.widthM * 100 - zone.widthCm)}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        exclusionZones: tent.exclusionZones.map((z) =>
+                                            z.id === zone.id ? { ...z, xCm: v } : z
+                                        ),
+                                    })}
+                                />
+                                <NumberInput
+                                    label="Posisi Y"
+                                    value={zone.yCm}
+                                    unit="cm"
+                                    min={0}
+                                    max={Math.max(0, tent.lengthM * 100 - zone.heightCm)}
+                                    step={5}
+                                    onChange={(v) => update({
+                                        exclusionZones: tent.exclusionZones.map((z) =>
+                                            z.id === zone.id ? { ...z, yCm: v } : z
+                                        ),
+                                    })}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </section>
+            )}
+
             {/* Furniture items */}
             {tent.furniture.length > 0 && (
                 <section className="config-section">
@@ -231,7 +321,7 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                     {tent.furniture.map((item) => (
                         <div key={item.id} className="furniture-item-config">
                             <span className="furniture-item-label">
-                                {item.type === 'tv' ? '📺' : '🚪'} {item.label}
+                                {item.type === 'tv' ? '📺' : item.type === 'door' ? '🚪' : '❄️'} {item.label}
                             </span>
                             <div className="config-grid">
                                 <NumberInput

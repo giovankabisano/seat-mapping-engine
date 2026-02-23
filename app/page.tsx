@@ -21,6 +21,8 @@ function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null 
         furniture: t.furniture ?? [],
         wings: t.wings ?? [],
         exclusionZones: t.exclusionZones ?? [],
+        bottomAisleCm: t.bottomAisleCm ?? 0,
+        topAisleCm: t.topAisleCm ?? 0,
       }));
       return { tents: migratedTents as TentConfig[], activeTentId: parsed.activeTentId };
     }

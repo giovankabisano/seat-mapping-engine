@@ -1,4 +1,4 @@
-export type FurnitureType = 'tv' | 'door';
+export type FurnitureType = 'tv' | 'door' | 'ac';
 
 export interface FurnitureItem {
   id: string;
@@ -63,6 +63,10 @@ export interface TentConfig {
   leftAisleCm: number;
   /** Right side aisle width in cm */
   rightAisleCm: number;
+  /** Bottom/rear aisle width in cm */
+  bottomAisleCm: number;
+  /** Top/front aisle width in cm */
+  topAisleCm: number;
   /** Exclusion zones (no-chair areas) */
   exclusionZones: ExclusionZone[];
   /** Furniture items (TV monitors, doors) */
@@ -134,6 +138,8 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     },
     leftAisleCm: 0,
     rightAisleCm: 0,
+    bottomAisleCm: 0,
+    topAisleCm: 0,
     exclusionZones: [],
     furniture: [],
     wings: [],

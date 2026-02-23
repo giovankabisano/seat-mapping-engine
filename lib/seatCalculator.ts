@@ -111,7 +111,11 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
     const seatingStartX = tent.leftAisleCm || 0;
 
     const cellDepth = tent.chairDepthCm + tent.frontGapCm;
-    const totalRows = Math.floor(tentLengthCm / cellDepth);
+    const bottomAisle = tent.bottomAisleCm || 0;
+    const topAisle = tent.topAisleCm || 0;
+    const seatingHeight = tentLengthCm - bottomAisle - topAisle;
+    const seatingStartY = topAisle;
+    const totalRows = Math.floor(seatingHeight / cellDepth);
     const cellWidth = tent.chairWidthCm + tent.sideGapCm;
 
     const blocksInfo: BlockInfo[] = [];
@@ -137,7 +141,7 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
             for (let r = 0; r < totalRows; r++) {
                 for (let c = 0; c < colsPerBlock; c++) {
                     const cx = xStart + blockPadding + c * cellWidth;
-                    const cy = r * cellDepth;
+                    const cy = seatingStartY + r * cellDepth;
                     const excluded = isExcluded(
                         cx, cy, tent.chairWidthCm, tent.chairDepthCm,
                         tent.exclusionZones, tent.altar, tent.furniture

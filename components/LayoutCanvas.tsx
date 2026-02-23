@@ -26,6 +26,7 @@ const MAX_ZOOM = 5;
 const FURNITURE_STYLES: Record<FurnitureType, { color: string; hoverColor: string; icon: string; bgAlpha: number; hoverBgAlpha: number }> = {
     tv: { color: '#00b8d4', hoverColor: '#26c6da', icon: '📺', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
     door: { color: '#ff7043', hoverColor: '#ff8a65', icon: '🚪', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
+    ac: { color: '#42a5f5', hoverColor: '#64b5f6', icon: '❄️', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
 };
 
 const WING_SIDE_LABELS: Record<WingSide, string> = {
@@ -123,9 +124,12 @@ export default function LayoutCanvas({
     }
 
     function addNewFurniture(type: FurnitureType) {
+        const countOfType = tent.furniture.filter(f => f.type === type).length + 1;
         const defaults = type === 'tv'
-            ? { widthCm: 120, heightCm: 15, label: `TV ${tent.furniture.filter(f => f.type === 'tv').length + 1}` }
-            : { widthCm: 100, heightCm: 30, label: `Pintu ${tent.furniture.filter(f => f.type === 'door').length + 1}` };
+            ? { widthCm: 120, heightCm: 15, label: `TV ${countOfType}` }
+            : type === 'door'
+                ? { widthCm: 100, heightCm: 30, label: `Pintu ${countOfType}` }
+                : { widthCm: 80, heightCm: 20, label: `AC ${countOfType}` };
         onAddFurniture({
             id: `${type}-${Date.now()}`,
             type,
@@ -228,6 +232,22 @@ export default function LayoutCanvas({
         // Side aisles
         const leftAisleCm = tent.leftAisleCm || 0;
         const rightAisleCm = tent.rightAisleCm || 0;
+        const topAisleCm = tent.topAisleCm || 0;
+
+        // Top/front aisle
+        if (topAisleCm > 0) {
+            const th = topAisleCm * scale;
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
+            ctx.fillRect(toX(0), toY(0), tentWidthCm * scale, th);
+            ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(toX(0), toY(topAisleCm));
+            ctx.lineTo(toX(tentWidthCm), toY(topAisleCm));
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
 
         if (leftAisleCm > 0) {
             const lw = leftAisleCm * scale;
@@ -253,6 +273,22 @@ export default function LayoutCanvas({
             ctx.beginPath();
             ctx.moveTo(toX(tentWidthCm - rightAisleCm), toY(0));
             ctx.lineTo(toX(tentWidthCm - rightAisleCm), toY(tentLengthCm));
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Bottom/rear aisle
+        const bottomAisleCm = tent.bottomAisleCm || 0;
+        if (bottomAisleCm > 0) {
+            const bh = bottomAisleCm * scale;
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
+            ctx.fillRect(toX(0), toY(tentLengthCm) - bh, tentWidthCm * scale, bh);
+            ctx.strokeStyle = 'rgba(46, 204, 113, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(toX(0), toY(tentLengthCm - bottomAisleCm));
+            ctx.lineTo(toX(tentWidthCm), toY(tentLengthCm - bottomAisleCm));
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -690,6 +726,9 @@ export default function LayoutCanvas({
                 <button className="toolbar-btn" onClick={() => addNewFurniture('door')} title="Tambah Pintu">
                     <span>🚪</span><span>+ Pintu</span>
                 </button>
+                <button className="toolbar-btn" onClick={() => addNewFurniture('ac')} title="Tambah AC">
+                    <span>❄️</span><span>+ AC</span>
+                </button>
 
                 {/* Wing dropdown */}
                 <div className="wing-dropdown-container">
@@ -770,6 +809,7 @@ export default function LayoutCanvas({
                 <span className="legend-item"><span className="legend-swatch legend-altar"></span> Altar</span>
                 <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(0,184,212,0.3)', border: '1px solid rgba(0,184,212,0.6)' }}></span> TV</span>
                 <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(255,112,67,0.3)', border: '1px solid rgba(255,112,67,0.6)' }}></span> Pintu</span>
+                <span className="legend-item"><span className="legend-swatch" style={{ background: 'rgba(66,165,245,0.3)', border: '1px solid rgba(66,165,245,0.6)' }}></span> AC</span>
                 <span className="legend-item"><span className="legend-swatch legend-zone"></span> Zona</span>
                 <span className="legend-item legend-hint">Scroll = Zoom · Drag = Pan</span>
             </div>

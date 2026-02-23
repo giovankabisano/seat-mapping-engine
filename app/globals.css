@@ -338,6 +338,22 @@ body {
   margin-bottom: 6px;
 }
 
+.zone-item-config {
+  padding: 8px;
+  background: rgba(255, 100, 100, 0.03);
+  border: 1px solid rgba(255, 100, 100, 0.2);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.zone-item-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff6b6b;
+  display: block;
+  margin-bottom: 6px;
+}
+
 /* Wing dropdown */
 .wing-dropdown-container {
   position: relative;
