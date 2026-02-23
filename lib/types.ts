@@ -1,4 +1,4 @@
-export type FurnitureType = 'tv' | 'door' | 'ac';
+export type FurnitureType = 'tv' | 'door';
 
 export interface FurnitureItem {
   id: string;
@@ -73,6 +73,17 @@ export interface TentConfig {
   furniture: FurnitureItem[];
   /** Wing extensions for non-rectangular shapes */
   wings: WingConfig[];
+  /** AC auto-distribution config */
+  acConfig: AcConfig;
+}
+
+export interface AcConfig {
+  /** Total number of ACs */
+  count: number;
+  /** Width of each AC unit in cm */
+  widthCm: number;
+  /** Depth of each AC unit in cm */
+  depthCm: number;
 }
 
 export interface ExclusionZone {
@@ -143,5 +154,58 @@ export function createDefaultTent(id: string, name: string): TentConfig {
     exclusionZones: [],
     furniture: [],
     wings: [],
+    acConfig: { count: 0, widthCm: 80, depthCm: 20 },
   };
+}
+
+/**
+ * Generate AC positions distributed symmetrically along all 4 walls.
+ * Remainder priority: left, right, top, bottom — so left/right stay equal.
+ */
+export function generateAcPositions(
+  acConfig: AcConfig,
+  tentWidthCm: number,
+  tentLengthCm: number
+): { xCm: number; yCm: number; widthCm: number; heightCm: number; wall: string }[] {
+  if (acConfig.count <= 0) return [];
+
+  // Distribute across 4 walls as evenly as possible
+  const perWall = Math.floor(acConfig.count / 4);
+  const remainder = acConfig.count % 4;
+  // Priority: left, right first (keeps sides symmetrical), then top, bottom
+  const leftCount = perWall + (remainder > 0 ? 1 : 0);
+  const rightCount = perWall + (remainder > 1 ? 1 : 0);
+  const topCount = perWall + (remainder > 2 ? 1 : 0);
+  const bottomCount = perWall;
+  const wallCounts = [topCount, rightCount, bottomCount, leftCount];
+
+  const positions: { xCm: number; yCm: number; widthCm: number; heightCm: number; wall: string }[] = [];
+  const w = acConfig.widthCm;
+  const d = acConfig.depthCm;
+
+  // Top wall — ACs along the top edge, facing down
+  for (let i = 0; i < wallCounts[0]; i++) {
+    const spacing = tentWidthCm / (wallCounts[0] + 1);
+    positions.push({ xCm: spacing * (i + 1) - w / 2, yCm: 0, widthCm: w, heightCm: d, wall: 'top' });
+  }
+
+  // Right wall — ACs along the right edge, facing left
+  for (let i = 0; i < wallCounts[1]; i++) {
+    const spacing = tentLengthCm / (wallCounts[1] + 1);
+    positions.push({ xCm: tentWidthCm - d, yCm: spacing * (i + 1) - w / 2, widthCm: d, heightCm: w, wall: 'right' });
+  }
+
+  // Bottom wall — ACs along the bottom edge, facing up
+  for (let i = 0; i < wallCounts[2]; i++) {
+    const spacing = tentWidthCm / (wallCounts[2] + 1);
+    positions.push({ xCm: spacing * (i + 1) - w / 2, yCm: tentLengthCm - d, widthCm: w, heightCm: d, wall: 'bottom' });
+  }
+
+  // Left wall — ACs along the left edge, facing right
+  for (let i = 0; i < wallCounts[3]; i++) {
+    const spacing = tentLengthCm / (wallCounts[3] + 1);
+    positions.push({ xCm: 0, yCm: spacing * (i + 1) - w / 2, widthCm: d, heightCm: w, wall: 'left' });
+  }
+
+  return positions;
 }

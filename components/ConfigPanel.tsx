@@ -238,6 +238,44 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                 </div>
             </section>
 
+            {/* AC */}
+            <section className="config-section">
+                <h3 className="config-section-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="10" rx="2"></rect><line x1="6" y1="18" x2="6" y2="14"></line><line x1="12" y1="20" x2="12" y2="14"></line><line x1="18" y1="18" x2="18" y2="14"></line></svg>
+                    ❄️ AC
+                </h3>
+                <p className="config-hint">AC otomatis tersebar simetris di setiap sisi</p>
+                <div className="config-grid">
+                    <NumberInput
+                        label="Jumlah"
+                        value={(tent.acConfig || { count: 0 }).count}
+                        unit="unit"
+                        min={0}
+                        max={40}
+                        step={1}
+                        onChange={(v) => update({ acConfig: { ...(tent.acConfig || { count: 0, widthCm: 80, depthCm: 20 }), count: Math.floor(v) } })}
+                    />
+                    <NumberInput
+                        label="Lebar"
+                        value={(tent.acConfig || { widthCm: 80 }).widthCm}
+                        unit="cm"
+                        min={20}
+                        max={200}
+                        step={5}
+                        onChange={(v) => update({ acConfig: { ...(tent.acConfig || { count: 0, widthCm: 80, depthCm: 20 }), widthCm: v } })}
+                    />
+                    <NumberInput
+                        label="Kedalaman"
+                        value={(tent.acConfig || { depthCm: 20 }).depthCm}
+                        unit="cm"
+                        min={5}
+                        max={100}
+                        step={5}
+                        onChange={(v) => update({ acConfig: { ...(tent.acConfig || { count: 0, widthCm: 80, depthCm: 20 }), depthCm: v } })}
+                    />
+                </div>
+            </section>
+
             {/* Exclusion Zones */}
             {tent.exclusionZones.length > 0 && (
                 <section className="config-section">
@@ -321,7 +359,7 @@ export default function ConfigPanel({ tent, onChange }: ConfigPanelProps) {
                     {tent.furniture.map((item) => (
                         <div key={item.id} className="furniture-item-config">
                             <span className="furniture-item-label">
-                                {item.type === 'tv' ? '📺' : item.type === 'door' ? '🚪' : '❄️'} {item.label}
+                                {item.type === 'tv' ? '📺' : '🚪'} {item.label}
                             </span>
                             <div className="config-grid">
                                 <NumberInput

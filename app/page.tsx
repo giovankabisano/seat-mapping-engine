@@ -18,11 +18,12 @@ function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null 
       // Migrate old saved state: add defaults for new properties
       const migratedTents = parsed.tents.map((t: Record<string, unknown>) => ({
         ...t,
-        furniture: t.furniture ?? [],
+        furniture: Array.isArray(t.furniture) ? (t.furniture as Array<Record<string, unknown>>).filter((f) => f.type !== 'ac') : [],
         wings: t.wings ?? [],
         exclusionZones: t.exclusionZones ?? [],
         bottomAisleCm: t.bottomAisleCm ?? 0,
         topAisleCm: t.topAisleCm ?? 0,
+        acConfig: t.acConfig ?? { count: 0, widthCm: 80, depthCm: 20 },
       }));
       return { tents: migratedTents as TentConfig[], activeTentId: parsed.activeTentId };
     }

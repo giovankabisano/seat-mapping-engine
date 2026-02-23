@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { TentConfig, LayoutResult, ExclusionZone, AltarConfig, FurnitureItem, FurnitureType, WingConfig, WingSide } from '@/lib/types';
+import { TentConfig, LayoutResult, ExclusionZone, AltarConfig, FurnitureItem, FurnitureType, WingConfig, WingSide, generateAcPositions } from '@/lib/types';
 import { getWingRect, getTotalBounds } from '@/lib/seatCalculator';
 
 interface LayoutCanvasProps {
@@ -26,7 +26,6 @@ const MAX_ZOOM = 5;
 const FURNITURE_STYLES: Record<FurnitureType, { color: string; hoverColor: string; icon: string; bgAlpha: number; hoverBgAlpha: number }> = {
     tv: { color: '#00b8d4', hoverColor: '#26c6da', icon: '📺', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
     door: { color: '#ff7043', hoverColor: '#ff8a65', icon: '🚪', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
-    ac: { color: '#42a5f5', hoverColor: '#64b5f6', icon: '❄️', bgAlpha: 0.25, hoverBgAlpha: 0.35 },
 };
 
 const WING_SIDE_LABELS: Record<WingSide, string> = {
@@ -422,6 +421,33 @@ export default function LayoutCanvas({
             }
         }
 
+        // === Auto-generated ACs ===
+        const acPositions = generateAcPositions(tent.acConfig || { count: 0, widthCm: 80, depthCm: 20 }, tentWidthCm, tentLengthCm);
+        for (const ac of acPositions) {
+            const ax = toX(ac.xCm);
+            const ay = toY(ac.yCm);
+            const aw = ac.widthCm * scale;
+            const ah = ac.heightCm * scale;
+
+            ctx.fillStyle = 'rgba(66, 165, 245, 0.25)';
+            ctx.beginPath();
+            ctx.roundRect(ax, ay, aw, ah, Math.max(1, 3 * scale));
+            ctx.fill();
+
+            ctx.strokeStyle = '#42a5f5';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(ax, ay, aw, ah, Math.max(1, 3 * scale));
+            ctx.stroke();
+
+            ctx.fillStyle = '#42a5f5';
+            ctx.font = `bold ${Math.max(8, 10 * scale)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❄️', ax + aw / 2, ay + ah / 2);
+            ctx.textBaseline = 'alphabetic';
+        }
+
         // === Exclusion zones ===
         for (const zone of tent.exclusionZones) {
             const zx = toX(zone.xCm);
@@ -726,9 +752,6 @@ export default function LayoutCanvas({
                 <button className="toolbar-btn" onClick={() => addNewFurniture('door')} title="Tambah Pintu">
                     <span>🚪</span><span>+ Pintu</span>
                 </button>
-                <button className="toolbar-btn" onClick={() => addNewFurniture('ac')} title="Tambah AC">
-                    <span>❄️</span><span>+ AC</span>
-                </button>
 
                 {/* Wing dropdown */}
                 <div className="wing-dropdown-container">
@@ -758,12 +781,15 @@ export default function LayoutCanvas({
                 )}
                 {tent.furniture.length > 0 && (
                     <div className="zone-badges">
-                        {tent.furniture.map((f) => (
-                            <span key={f.id} className="zone-badge" style={{ borderColor: FURNITURE_STYLES[f.type].color }}>
-                                {FURNITURE_STYLES[f.type].icon} {f.label}
-                                <button className="zone-badge-remove" onClick={() => onRemoveFurniture(f.id)}>×</button>
-                            </span>
-                        ))}
+                        {tent.furniture.map((f) => {
+                            const style = FURNITURE_STYLES[f.type] || { color: '#888', icon: '?' };
+                            return (
+                                <span key={f.id} className="zone-badge" style={{ borderColor: style.color }}>
+                                    {style.icon} {f.label}
+                                    <button className="zone-badge-remove" onClick={() => onRemoveFurniture(f.id)}>×</button>
+                                </span>
+                            );
+                        })}
                     </div>
                 )}
                 {tent.wings.length > 0 && (

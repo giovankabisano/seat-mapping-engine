@@ -1,4 +1,4 @@
-import { TentConfig, ChairPosition, LayoutResult, BlockInfo, ExclusionZone, FurnitureItem, WingConfig } from './types';
+import { TentConfig, ChairPosition, LayoutResult, BlockInfo, ExclusionZone, FurnitureItem, WingConfig, generateAcPositions } from './types';
 
 type Rect = { xCm: number; yCm: number; widthCm: number; heightCm: number };
 
@@ -7,7 +7,7 @@ function rectsOverlap(cx: number, cy: number, cw: number, ch: number, r: Rect): 
 }
 
 /**
- * Checks if a chair overlaps the altar, any exclusion zone, or any furniture item.
+ * Checks if a chair overlaps the altar, any exclusion zone, furniture item, or AC unit.
  */
 function isExcluded(
     cx: number,
@@ -16,7 +16,8 @@ function isExcluded(
     chairH: number,
     zones: ExclusionZone[],
     altar: Rect,
-    furniture: FurnitureItem[]
+    furniture: FurnitureItem[],
+    acRects: Rect[]
 ): boolean {
     if (altar.widthCm > 0 && altar.heightCm > 0 && rectsOverlap(cx, cy, chairW, chairH, altar)) return true;
     for (const z of zones) {
@@ -24,6 +25,9 @@ function isExcluded(
     }
     for (const f of furniture) {
         if (rectsOverlap(cx, cy, chairW, chairH, f)) return true;
+    }
+    for (const ac of acRects) {
+        if (rectsOverlap(cx, cy, chairW, chairH, ac)) return true;
     }
     return false;
 }
@@ -69,7 +73,8 @@ export function getTotalBounds(tent: TentConfig): Rect {
 function generateChairGrid(
     sectionRect: Rect,
     tent: TentConfig,
-    wingId: string | null
+    wingId: string | null,
+    acRects: Rect[]
 ): ChairPosition[] {
     const chairs: ChairPosition[] = [];
     const cellWidth = tent.chairWidthCm + tent.sideGapCm;
@@ -88,7 +93,7 @@ function generateChairGrid(
             const cy = sectionRect.yCm + r * cellDepth;
             const excluded = isExcluded(
                 cx, cy, tent.chairWidthCm, tent.chairDepthCm,
-                tent.exclusionZones, tent.altar, tent.furniture
+                tent.exclusionZones, tent.altar, tent.furniture, acRects
             );
             chairs.push({ row: r, col: c, block: 0, xCm: cx, yCm: cy, excluded, wingId });
         }
@@ -102,6 +107,10 @@ function generateChairGrid(
 export function calculateLayout(tent: TentConfig): LayoutResult {
     const tentWidthCm = tent.widthM * 100;
     const tentLengthCm = tent.lengthM * 100;
+
+    // Generate AC positions
+    const acPositions = generateAcPositions(tent.acConfig || { count: 0, widthCm: 80, depthCm: 20 }, tentWidthCm, tentLengthCm);
+    const acRects: Rect[] = acPositions.map(ac => ({ xCm: ac.xCm, yCm: ac.yCm, widthCm: ac.widthCm, heightCm: ac.heightCm }));
 
     // ===== Main tent =====
     const aisleCount = Math.max(0, tent.aisleCount);
@@ -144,7 +153,7 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
                     const cy = seatingStartY + r * cellDepth;
                     const excluded = isExcluded(
                         cx, cy, tent.chairWidthCm, tent.chairDepthCm,
-                        tent.exclusionZones, tent.altar, tent.furniture
+                        tent.exclusionZones, tent.altar, tent.furniture, acRects
                     );
                     mainChairs.push({ row: r, col: c, block: b, xCm: cx, yCm: cy, excluded, wingId: null });
                 }
@@ -159,7 +168,7 @@ export function calculateLayout(tent: TentConfig): LayoutResult {
     for (const wing of tent.wings) {
         const wr = getWingRect(wing, tentWidthCm, tentLengthCm);
         wingAreaM2 += (wr.widthCm / 100) * (wr.heightCm / 100);
-        const wChairs = generateChairGrid(wr, tent, wing.id);
+        const wChairs = generateChairGrid(wr, tent, wing.id, acRects);
         wingChairs = wingChairs.concat(wChairs);
     }
 
