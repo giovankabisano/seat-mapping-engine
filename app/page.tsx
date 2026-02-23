@@ -9,24 +9,27 @@ import Summary from '@/components/Summary';
 
 const STORAGE_KEY = 'seat-planner-state';
 
+function migrateTent(t: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...t,
+    furniture: Array.isArray(t.furniture) ? (t.furniture as Array<Record<string, unknown>>).filter((f) => f.type !== 'ac') : [],
+    wings: t.wings ?? [],
+    exclusionZones: t.exclusionZones ?? [],
+    bottomAisleCm: t.bottomAisleCm ?? 0,
+    topAisleCm: t.topAisleCm ?? 0,
+    acConfig: t.acConfig ?? { count: 0, widthCm: 80, depthCm: 20 },
+    verticalAisleCount: t.verticalAisleCount ?? 0,
+    verticalAisleWidthCm: t.verticalAisleWidthCm ?? 100,
+  };
+}
+
 function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.tents?.length > 0 && parsed?.activeTentId) {
-      // Migrate old saved state: add defaults for new properties
-      const migratedTents = parsed.tents.map((t: Record<string, unknown>) => ({
-        ...t,
-        furniture: Array.isArray(t.furniture) ? (t.furniture as Array<Record<string, unknown>>).filter((f) => f.type !== 'ac') : [],
-        wings: t.wings ?? [],
-        exclusionZones: t.exclusionZones ?? [],
-        bottomAisleCm: t.bottomAisleCm ?? 0,
-        topAisleCm: t.topAisleCm ?? 0,
-        acConfig: t.acConfig ?? { count: 0, widthCm: 80, depthCm: 20 },
-        verticalAisleCount: t.verticalAisleCount ?? 0,
-        verticalAisleWidthCm: t.verticalAisleWidthCm ?? 100,
-      }));
+      const migratedTents = parsed.tents.map((t: Record<string, unknown>) => migrateTent(t));
       return { tents: migratedTents as TentConfig[], activeTentId: parsed.activeTentId };
     }
   } catch {
@@ -35,15 +38,50 @@ function loadSavedState(): { tents: TentConfig[]; activeTentId: string } | null 
   return null;
 }
 
+/**
+ * Load config from URL query param ?config=<base64-encoded JSON>
+ */
+function loadFromQuery(): { tents: TentConfig[]; activeTentId: string } | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const configB64 = params.get('config');
+    if (!configB64) return null;
+    const json = JSON.parse(atob(configB64));
+    if (json?.tents?.length > 0 && json?.activeTentId) {
+      const migratedTents = json.tents.map((t: Record<string, unknown>) => migrateTent(t));
+      return { tents: migratedTents as TentConfig[], activeTentId: json.activeTentId };
+    }
+  } catch {
+    // ignore corrupt query
+  }
+  return null;
+}
+
+/**
+ * Generate a share URL with full config encoded in query.
+ */
+function generateShareUrl(tents: TentConfig[], activeTentId: string): string {
+  const payload = JSON.stringify({ tents, activeTentId });
+  const encoded = btoa(payload);
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?config=${encoded}`;
+}
+
 export default function Home() {
   const [tents, setTents] = useState<TentConfig[]>(() => {
+    const fromQuery = loadFromQuery();
+    if (fromQuery) return fromQuery.tents;
     const saved = loadSavedState();
     return saved ? saved.tents : [createDefaultTent('tent-1', 'Tenda 1')];
   });
   const [activeTentId, setActiveTentId] = useState(() => {
+    const fromQuery = loadFromQuery();
+    if (fromQuery) return fromQuery.activeTentId;
     const saved = loadSavedState();
     return saved ? saved.activeTentId : 'tent-1';
   });
+  const [shareToast, setShareToast] = useState(false);
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -52,6 +90,21 @@ export default function Home() {
     } catch {
       // ignore quota exceeded
     }
+  }, [tents, activeTentId]);
+
+  // Clear query param after loading (so edits don't conflict)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('config=')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const copyShareUrl = useCallback(() => {
+    const url = generateShareUrl(tents, activeTentId);
+    navigator.clipboard.writeText(url).then(() => {
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 2000);
+    });
   }, [tents, activeTentId]);
 
   const activeTent = tents.find((t) => t.id === activeTentId) ?? tents[0];
@@ -198,6 +251,9 @@ export default function Home() {
           </div>
         </div>
         <div className="header-right">
+          <button className="share-btn" onClick={copyShareUrl} title="Salin link konfigurasi">
+            {shareToast ? '✅ Tersalin!' : '🔗 Share'}
+          </button>
           <div className="total-badge">
             <span className="total-badge-label">Total Semua Tenda</span>
             <span className="total-badge-value">{totalAllTents} kursi</span>

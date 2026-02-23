@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { TentConfig, LayoutResult, ExclusionZone, AltarConfig, FurnitureItem, FurnitureType, WingConfig, WingSide, generateAcPositions } from '@/lib/types';
 import { getWingRect, getTotalBounds } from '@/lib/seatCalculator';
+import { exportLayout } from '@/lib/exportLayout';
 
 interface LayoutCanvasProps {
     tent: TentConfig;
@@ -835,6 +836,15 @@ export default function LayoutCanvas({
                 {mode === 'draw' && (
                     <span className="toolbar-hint">🖱 Klik & drag di canvas untuk membuat zona…</span>
                 )}
+
+                <div className="export-controls">
+                    <button className="toolbar-btn" onClick={() => exportLayout({ tent, layout, format: 'png' })} title="Download sebagai PNG">
+                        <span>🖼️</span><span>PNG</span>
+                    </button>
+                    <button className="toolbar-btn" onClick={() => exportLayout({ tent, layout, format: 'pdf' })} title="Cetak / Simpan PDF">
+                        <span>📄</span><span>PDF</span>
+                    </button>
+                </div>
 
                 <div className="zoom-controls">
                     <button className="zoom-btn" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z * 0.8))}>−</button>

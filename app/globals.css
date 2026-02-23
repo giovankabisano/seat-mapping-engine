@@ -96,6 +96,25 @@ body {
   border-radius: 10px;
 }
 
+.share-btn {
+  padding: 8px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.share-btn:hover {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple-light);
+  background: rgba(108, 92, 231, 0.12);
+}
+
 .total-badge-label {
   font-size: 10px;
   color: var(--text-muted);
@@ -532,12 +551,27 @@ body {
   cursor: grabbing;
 }
 
+/* Export Controls */
+.export-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.export-controls .toolbar-btn:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(74, 158, 255, 0.08);
+}
+
 /* Zoom Controls */
 .zoom-controls {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
